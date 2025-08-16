@@ -1,0 +1,577 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}智能匹配结果 - 3D鞋模匹配系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .result-card {
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        transition: all 0.3s ease;
+    }
+    
+    .result-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        transform: translateY(-2px);
+    }
+    
+    .optimal-badge {
+        background: linear-gradient(45deg, #28a745, #20c997);
+        color: white;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 14px;
+    }
+    
+    .score-meter {
+        width: 100%;
+        height: 8px;
+        background: #e9ecef;
+        border-radius: 4px;
+        overflow: hidden;
+        margin: 10px 0;
+    }
+    
+    .score-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #dc3545, #ffc107, #28a745);
+        transition: width 0.3s ease;
+    }
+    
+    .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin: 20px 0;
+    }
+    
+    .metric-card {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 6px;
+        text-align: center;
+    }
+    
+    .metric-value {
+        font-size: 24px;
+        font-weight: bold;
+        color: #495057;
+    }
+    
+    .metric-label {
+        font-size: 12px;
+        color: #6c757d;
+        text-transform: uppercase;
+        margin-top: 5px;
+    }
+    
+    .comparison-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+    }
+    
+    .comparison-table th,
+    .comparison-table td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .comparison-table th {
+        background: #f8f9fa;
+        font-weight: 600;
+    }
+    
+    .rank-badge {
+        display: inline-block;
+        width: 30px;
+        height: 30px;
+        line-height: 30px;
+        text-align: center;
+        border-radius: 50%;
+        font-weight: bold;
+        font-size: 14px;
+    }
+    
+    .rank-1 { background: #ffd700; color: #000; }
+    .rank-2 { background: #c0c0c0; color: #000; }
+    .rank-3 { background: #cd7f32; color: #fff; }
+    
+    .analysis-details {
+        background: #f8f9fa;
+        border-radius: 6px;
+        padding: 20px;
+        margin: 20px 0;
+    }
+    
+    .chart-container {
+        height: 300px;
+        margin: 20px 0;
+    }
+    
+    .action-buttons {
+        display: flex;
+        gap: 10px;
+        margin: 20px 0;
+    }
+    
+    .btn-optimize {
+        background: linear-gradient(45deg, #007bff, #0056b3);
+        border: none;
+        color: white;
+        padding: 10px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-optimize:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,123,255,0.3);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- 页面标题 -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="h3 mb-0 text-gray-800">
+                <i class="fas fa-chart-line text-primary"></i>
+                智能匹配结果
+            </h1>
+            <p class="text-muted">基于几何特征和余量要求的最优粗胚匹配</p>
+        </div>
+    </div>
+
+    <!-- 匹配参数信息 -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-cog text-info"></i>
+                        匹配参数
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <strong>鞋模文件:</strong><br>
+                            <span class="text-primary">{{ shoe_model.filename }}</span>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>余量距离:</strong><br>
+                            <span class="text-success">{{ margin_distance }} mm</span>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>处理时间:</strong><br>
+                            <span class="text-info">{{ processing_time|default:"计算中..." }}</span>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>匹配数量:</strong><br>
+                            <span class="text-warning">{{ results|length }} 个结果</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 最优匹配结果 -->
+    {% if optimal_match %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-success">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-trophy"></i>
+                        最优匹配结果
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <h4 class="text-success mb-3">
+                                {{ optimal_match.blank_name }}
+                                <span class="optimal-badge ms-3">最优选择</span>
+                            </h4>
+                            
+                            <div class="metric-grid">
+                                <div class="metric-card">
+                                    <div class="metric-value text-primary">{{ optimal_match.match_score }}</div>
+                                    <div class="metric-label">匹配分数</div>
+                                </div>
+                                <div class="metric-card">
+                                    <div class="metric-value text-success">{{ optimal_match.material_utilization }}%</div>
+                                    <div class="metric-label">材料利用率</div>
+                                </div>
+                                <div class="metric-card">
+                                    <div class="metric-value text-info">{{ optimal_match.coverage_score }}%</div>
+                                    <div class="metric-label">余量覆盖率</div>
+                                </div>
+                                <div class="metric-card">
+                                    <div class="metric-value text-warning">{{ optimal_match.cost_savings }}%</div>
+                                    <div class="metric-label">成本节省</div>
+                                </div>
+                            </div>
+                            
+                            <div class="mt-3">
+                                <strong>匹配分数:</strong>
+                                <div class="score-meter">
+                                    <div class="score-fill" style="width: {{ optimal_match.match_score }}%"></div>
+                                </div>
+                                <small class="text-muted">{{ optimal_match.match_score }}/100 分</small>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4 text-center">
+                            <div class="mb-3">
+                                <i class="fas fa-cube fa-4x text-success"></i>
+                            </div>
+                            <div class="action-buttons justify-content-center">
+                                <button class="btn btn-optimize" onclick="optimizeMatch({{ optimal_match.id }})">
+                                    <i class="fas fa-magic"></i> 优化分析
+                                </button>
+                                <button class="btn btn-outline-primary" onclick="view3DModel({{ optimal_match.blank_id }})">
+                                    <i class="fas fa-eye"></i> 3D预览
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 所有匹配结果 -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-list text-primary"></i>
+                        完整匹配结果
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="comparison-table">
+                            <thead>
+                                <tr>
+                                    <th>排名</th>
+                                    <th>粗胚名称</th>
+                                    <th>匹配分数</th>
+                                    <th>材料利用率</th>
+                                    <th>余量覆盖率</th>
+                                    <th>成本节省</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for result in results %}
+                                <tr class="{% if result.is_optimal %}table-success{% endif %}">
+                                    <td>
+                                        <span class="rank-badge rank-{{ forloop.counter }}">
+                                            {{ forloop.counter }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <strong>{{ result.blank_name }}</strong>
+                                        {% if result.is_optimal %}
+                                        <span class="badge bg-success ms-2">最优</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="score-meter">
+                                            <div class="score-fill" style="width: {{ result.match_score }}%"></div>
+                                        </div>
+                                        <small>{{ result.match_score }}/100</small>
+                                    </td>
+                                    <td>
+                                        <span class="text-{% if result.material_utilization >= 80 %}success{% elif result.material_utilization >= 60 %}warning{% else %}danger{% endif %}">
+                                            {{ result.material_utilization }}%
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="text-{% if result.coverage_score >= 95 %}success{% elif result.coverage_score >= 80 %}warning{% else %}danger{% endif %}">
+                                            {{ result.coverage_score }}%
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="text-success">+{{ result.cost_savings }}%</span>
+                                    </td>
+                                    <td>
+                                        {% if result.is_feasible %}
+                                        <span class="badge bg-success">可行</span>
+                                        {% else %}
+                                        <span class="badge bg-danger">不可行</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary" onclick="viewDetails({{ result.id }})">
+                                                详情
+                                            </button>
+                                            <button class="btn btn-outline-info" onclick="view3DModel({{ result.blank_id }})">
+                                                3D预览
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 分析详情 -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="analysis-details">
+                <h5 class="mb-3">
+                    <i class="fas fa-chart-bar text-primary"></i>
+                    算法分析详情
+                </h5>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>几何特征分析</h6>
+                        <ul class="list-unstyled">
+                            <li><strong>形状直方图:</strong> 20×20×20网格特征提取</li>
+                            <li><strong>曲率分析:</strong> 基于局部平面拟合的曲率计算</li>
+                            <li><strong>特征点:</strong> 高曲率点提取和匹配</li>
+                            <li><strong>体积计算:</strong> 凸包算法精确体积估算</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <h6>余量计算算法</h6>
+                        <ul class="list-unstyled">
+                            <li><strong>KDTree搜索:</strong> 快速最近邻距离计算</li>
+                            <li><strong>余量验证:</strong> 确保95%以上点满足余量要求</li>
+                            <li><strong>统计分析:</strong> 最小/最大/平均余量计算</li>
+                            <li><strong>覆盖率:</strong> 满足余量要求的点数比例</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <h6>匹配评分权重</h6>
+                        <ul class="list-unstyled">
+                            <li><strong>几何相似度:</strong> 40% (形状直方图 + 特征点 + 体积比例)</li>
+                            <li><strong>余量覆盖率:</strong> 40% (确保余量要求满足)</li>
+                            <li><strong>体积效率:</strong> 20% (材料利用率优化)</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <h6>优化策略</h6>
+                        <ul class="list-unstyled">
+                            <li><strong>成本优先:</strong> 选择满足要求的最小粗胚</li>
+                            <li><strong>质量保证:</strong> 严格的余量覆盖率验证</li>
+                            <li><strong>智能排序:</strong> 多维度综合评分排序</li>
+                            <li><strong>实时分析:</strong> 支持参数调整和重新匹配</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 图表可视化 -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-pie text-primary"></i>
+                        匹配分数分布
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="scoreChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-bar text-success"></i>
+                        材料利用率对比
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="utilizationChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 详情模态框 -->
+<div class="modal fade" id="detailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">匹配结果详情</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="detailsContent">
+                <!-- 动态加载详情内容 -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// 页面加载完成后初始化图表
+document.addEventListener('DOMContentLoaded', function() {
+    initializeCharts();
+});
+
+function initializeCharts() {
+    // 匹配分数分布图
+    const scoreCtx = document.getElementById('scoreChart').getContext('2d');
+    new Chart(scoreCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['优秀 (80-100)', '良好 (60-79)', '一般 (40-59)', '较差 (0-39)'],
+            datasets: [{
+                data: [{{ results|length }}, 0, 0, 0], // 这里应该根据实际数据计算
+                backgroundColor: ['#28a745', '#ffc107', '#fd7e14', '#dc3545']
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+    
+    // 材料利用率对比图
+    const utilizationCtx = document.getElementById('utilizationChart').getContext('2d');
+    new Chart(utilizationCtx, {
+        type: 'bar',
+        data: {
+            labels: [{% for result in results %}'{{ result.blank_name }}'{% if not forloop.last %}, {% endif %}{% endfor %}],
+            datasets: [{
+                label: '材料利用率 (%)',
+                data: [{% for result in results %}{{ result.material_utilization }}{% if not forloop.last %}, {% endif %}{% endfor %}],
+                backgroundColor: 'rgba(40, 167, 69, 0.6)',
+                borderColor: 'rgba(40, 167, 69, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100
+                }
+            }
+        }
+    });
+}
+
+function viewDetails(resultId) {
+    // 加载匹配结果详情
+    fetch(`/matching/optimize/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({
+            matching_result_id: resultId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const optimization = data.optimization;
+            const content = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>当前状态</h6>
+                        <p><strong>匹配分数:</strong> ${optimization.current_score}</p>
+                        <p><strong>材料利用率:</strong> ${optimization.current_utilization}%</p>
+                        <p><strong>优化潜力:</strong> ${optimization.optimization_potential}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>改进建议</h6>
+                        <ul>
+                            ${optimization.improvements.map(imp => `<li>${imp}</li>`).join('')}
+                        </ul>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <h6>优化建议</h6>
+                    <ul>
+                        ${optimization.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+            document.getElementById('detailsContent').innerHTML = content;
+            new bootstrap.Modal(document.getElementById('detailsModal')).show();
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('加载详情失败');
+    });
+}
+
+function optimizeMatch(resultId) {
+    // 执行匹配优化
+    viewDetails(resultId);
+}
+
+function view3DModel(blankId) {
+    // 跳转到3D预览页面
+    window.open(`/files/${blankId}/preview/`, '_blank');
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}

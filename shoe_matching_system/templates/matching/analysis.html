@@ -1,0 +1,603 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}智能匹配分析 - 3D鞋模匹配系统{% endblock %}
+
+{% block extra_css %}
+<style>
+.analysis-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.analysis-card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    padding: 25px;
+    margin-bottom: 25px;
+    transition: all 0.3s ease;
+}
+
+.analysis-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 15px rgba(0,0,0,0.15);
+}
+
+.shoe-selection {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.matching-progress {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+}
+
+.results-preview {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    color: white;
+}
+
+.shoe-item {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.shoe-item:hover {
+    background: #e9ecef;
+    border-color: #007bff;
+}
+
+.shoe-item.selected {
+    background: #e3f2fd;
+    border-color: #2196f3;
+}
+
+.progress-bar-custom {
+    height: 20px;
+    border-radius: 10px;
+    background: #e9ecef;
+    overflow: hidden;
+    margin-bottom: 15px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(45deg, #28a745, #20c997);
+    width: 0%;
+    transition: width 0.5s ease;
+    border-radius: 10px;
+}
+
+.result-card {
+    background: rgba(255,255,255,0.95);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 15px;
+    backdrop-filter: blur(10px);
+}
+
+.score-badge {
+    display: inline-block;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-weight: bold;
+    font-size: 12px;
+}
+
+.score-excellent {
+    background: #d4edda;
+    color: #155724;
+}
+
+.score-good {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.score-poor {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.parameters-panel {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container analysis-container mt-4">
+    <!-- 页面标题 -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1><i class="fas fa-brain text-primary"></i> 智能匹配分析</h1>
+            <p class="text-muted">选择鞋模进行智能匹配分析，系统将自动找到最优的粗胚方案</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- 鞋模选择区域 -->
+        <div class="col-md-4">
+            <div class="analysis-card shoe-selection">
+                <h4><i class="fas fa-shoe-prints"></i> 选择鞋模</h4>
+                <p>选择要分析的鞋模文件</p>
+                
+                <div class="mt-3">
+                    <input type="text" class="form-control" id="shoeSearchInput" 
+                           placeholder="搜索鞋模文件..." style="background: rgba(255,255,255,0.9);">
+                </div>
+                
+                <div class="mt-3" style="max-height: 400px; overflow-y: auto;">
+                    {% for shoe in shoe_models %}
+                    <div class="shoe-item" data-shoe-id="{{ shoe.id }}" 
+                         data-shoe-name="{{ shoe.filename }}">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>{{ shoe.filename }}</strong>
+                                <div class="small text-muted">
+                                    <i class="fas fa-calendar"></i> {{ shoe.created_at|date:"Y-m-d H:i" }}
+                                </div>
+                                {% if shoe.points_count %}
+                                    <div class="small text-muted">
+                                        <i class="fas fa-dots"></i> {{ shoe.points_count }} 个点
+                                    </div>
+                                {% endif %}
+                            </div>
+                            <div>
+                                <span class="badge badge-primary">{{ shoe.file_format|upper }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-inbox fa-3x mb-3" style="opacity: 0.5;"></i>
+                        <p>暂无已处理的鞋模文件</p>
+                        <a href="{% url 'core:upload' %}" class="btn btn-light btn-sm">
+                            <i class="fas fa-plus"></i> 上传鞋模
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- 参数设置和分析控制 -->
+        <div class="col-md-4">
+            <div class="analysis-card">
+                <h4><i class="fas fa-cog text-info"></i> 分析参数</h4>
+                
+                <div class="parameters-panel">
+                    <div class="form-group">
+                        <label for="marginDistance">余量距离 (mm)</label>
+                        <input type="number" class="form-control" id="marginDistance" 
+                               value="2.5" min="0.1" max="20" step="0.1">
+                        <small class="form-text text-muted">匹配时的最小余量距离</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <div class="custom-control custom-checkbox">
+                            <input type="checkbox" class="custom-control-input" id="autoOptimize" checked>
+                            <label class="custom-control-label" for="autoOptimize">自动优化参数</label>
+                        </div>
+                        <small class="form-text text-muted">系统自动选择最优参数配置</small>
+                    </div>
+                </div>
+
+                <!-- 分析控制按钮 -->
+                <div class="text-center">
+                    <button type="button" class="btn btn-primary btn-lg" id="startAnalysisBtn" disabled>
+                        <i class="fas fa-play"></i> 开始智能分析
+                    </button>
+                    <button type="button" class="btn btn-warning btn-sm ml-2" id="quickMatchBtn" disabled>
+                        <i class="fas fa-bolt"></i> 快速匹配
+                    </button>
+                </div>
+
+                <!-- 选中的鞋模信息 -->
+                <div class="mt-3" id="selectedShoeInfo" style="display: none;">
+                    <div class="alert alert-info">
+                        <strong>已选择:</strong>
+                        <div id="selectedShoeName"></div>
+                        <small id="selectedShoeDetails" class="text-muted"></small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 分析进度和结果 -->
+        <div class="col-md-4">
+            <div class="analysis-card matching-progress">
+                <h4><i class="fas fa-chart-line"></i> 分析进度</h4>
+                
+                <!-- 进度条 -->
+                <div id="progressContainer" style="display: none;">
+                    <div class="progress-bar-custom">
+                        <div class="progress-fill" id="progressBar"></div>
+                    </div>
+                    <div class="text-center">
+                        <span id="progressText">准备中...</span>
+                    </div>
+                </div>
+
+                <!-- 空状态 -->
+                <div id="progressEmpty" class="text-center py-4">
+                    <i class="fas fa-hourglass-half fa-3x mb-3" style="opacity: 0.5;"></i>
+                    <p>选择鞋模后开始分析</p>
+                </div>
+
+                <!-- 最优匹配结果 -->
+                <div id="optimalResult" style="display: none;">
+                    <div class="result-card">
+                        <h6><i class="fas fa-trophy text-warning"></i> 最优匹配</h6>
+                        <div id="optimalResultContent"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 最近分析任务 -->
+    {% if recent_tasks %}
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="analysis-card">
+                <h4><i class="fas fa-history text-secondary"></i> 最近分析任务</h4>
+                
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>鞋模</th>
+                                <th>状态</th>
+                                <th>余量距离</th>
+                                <th>最优匹配</th>
+                                <th>分析时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for task in recent_tasks %}
+                            <tr>
+                                <td>
+                                    <strong>{{ task.shoe_model.filename|default:"批量分析" }}</strong>
+                                    <div class="small text-muted">{{ task.task_type }}</div>
+                                </td>
+                                <td>
+                                    {% if task.status == 'completed' %}
+                                        <span class="badge badge-success">已完成</span>
+                                    {% elif task.status == 'processing' %}
+                                        <span class="badge badge-warning">处理中</span>
+                                    {% elif task.status == 'failed' %}
+                                        <span class="badge badge-danger">失败</span>
+                                    {% else %}
+                                        <span class="badge badge-secondary">{{ task.status }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ task.margin_distance }}mm</td>
+                                <td>
+                                    {% if task.optimal_blank_model %}
+                                        <div class="small">
+                                            <strong>{{ task.optimal_blank_model.filename }}</strong>
+                                            <div class="text-muted">评分: {{ task.optimal_score|floatformat:1 }}</div>
+                                        </div>
+                                    {% else %}
+                                        <span class="text-muted">无</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ task.created_at|date:"m-d H:i" }}</td>
+                                <td>
+                                    {% if task.shoe_model %}
+                                        <button class="btn btn-sm btn-outline-primary" 
+                                                onclick="reAnalyze({{ task.shoe_model.id }}, {{ task.margin_distance }})">
+                                            <i class="fas fa-redo"></i> 重新分析
+                                        </button>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="text-center">
+                    <a href="{% url 'matching:results' %}" class="btn btn-primary">
+                        <i class="fas fa-chart-bar"></i> 查看所有结果
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let selectedShoeId = null;
+let currentTaskId = null;
+let progressInterval = null;
+
+$(document).ready(function() {
+    initializeAnalysisPage();
+});
+
+function initializeAnalysisPage() {
+    // 鞋模搜索
+    $('#shoeSearchInput').on('input', function() {
+        const searchTerm = $(this).val().toLowerCase();
+        $('.shoe-item').each(function() {
+            const shoeName = $(this).data('shoe-name').toLowerCase();
+            if (shoeName.includes(searchTerm)) {
+                $(this).show();
+            } else {
+                $(this).hide();
+            }
+        });
+    });
+
+    // 鞋模选择
+    $('.shoe-item').on('click', function() {
+        $('.shoe-item').removeClass('selected');
+        $(this).addClass('selected');
+        
+        selectedShoeId = $(this).data('shoe-id');
+        const shoeName = $(this).data('shoe-name');
+        
+        // 更新选中信息
+        $('#selectedShoeName').text(shoeName);
+        $('#selectedShoeDetails').text(`鞋模ID: ${selectedShoeId}`);
+        $('#selectedShoeInfo').show();
+        
+        // 启用分析按钮
+        $('#startAnalysisBtn, #quickMatchBtn').prop('disabled', false);
+    });
+
+    // 开始分析
+    $('#startAnalysisBtn').on('click', function() {
+        if (!selectedShoeId) {
+            showMessage('请先选择鞋模', 'warning');
+            return;
+        }
+        
+        startAnalysis();
+    });
+
+    // 快速匹配
+    $('#quickMatchBtn').on('click', function() {
+        if (!selectedShoeId) {
+            showMessage('请先选择鞋模', 'warning');
+            return;
+        }
+        
+        quickMatch();
+    });
+}
+
+function startAnalysis() {
+    const marginDistance = parseFloat($('#marginDistance').val());
+    
+    if (isNaN(marginDistance) || marginDistance <= 0) {
+        showMessage('请输入有效的余量距离', 'error');
+        return;
+    }
+    
+    // 禁用按钮
+    $('#startAnalysisBtn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> 分析中...');
+    
+    // 显示进度
+    $('#progressEmpty').hide();
+    $('#progressContainer').show();
+    updateProgress(0, '启动分析...');
+    
+    // 发送分析请求
+    $.ajax({
+        url: '{% url "matching:start_analysis" %}',
+        method: 'POST',
+        data: JSON.stringify({
+            shoe_id: selectedShoeId,
+            margin: marginDistance
+        }),
+        contentType: 'application/json',
+        success: function(response) {
+            if (response.success) {
+                currentTaskId = response.task_id;
+                showMessage(response.message, 'success');
+                
+                // 开始轮询进度
+                startProgressPolling();
+                
+                // 显示分析摘要
+                if (response.analysis_summary && response.analysis_summary.optimal_match) {
+                    showOptimalResult(response.analysis_summary.optimal_match);
+                }
+            } else {
+                showMessage('分析启动失败: ' + response.error, 'error');
+                resetAnalysisState();
+            }
+        },
+        error: function() {
+            showMessage('分析请求失败，请重试', 'error');
+            resetAnalysisState();
+        }
+    });
+}
+
+function quickMatch() {
+    $('#quickMatchBtn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> 匹配中...');
+    
+    $.ajax({
+        url: '{% url "matching:quick_match" %}',
+        method: 'POST',
+        data: JSON.stringify({
+            shoe_id: selectedShoeId
+        }),
+        contentType: 'application/json',
+        success: function(response) {
+            if (response.success) {
+                if (response.cached) {
+                    showMessage('找到缓存的最优匹配结果', 'info');
+                } else {
+                    showMessage('快速匹配完成', 'success');
+                }
+                
+                if (response.optimal_match) {
+                    showOptimalResult(response.optimal_match);
+                } else {
+                    showMessage('未找到可行的匹配方案', 'warning');
+                }
+            } else {
+                showMessage('快速匹配失败: ' + response.error, 'error');
+            }
+            
+            $('#quickMatchBtn').prop('disabled', false).html('<i class="fas fa-bolt"></i> 快速匹配');
+        },
+        error: function() {
+            showMessage('快速匹配请求失败，请重试', 'error');
+            $('#quickMatchBtn').prop('disabled', false).html('<i class="fas fa-bolt"></i> 快速匹配');
+        }
+    });
+}
+
+function startProgressPolling() {
+    progressInterval = setInterval(function() {
+        if (!currentTaskId) {
+            clearInterval(progressInterval);
+            return;
+        }
+        
+        $.ajax({
+            url: '{% url "matching:get_progress" %}',
+            method: 'GET',
+            data: {
+                task_id: currentTaskId
+            },
+            success: function(response) {
+                if (response.success) {
+                    updateProgress(response.progress, getProgressText(response.task_status));
+                    
+                    if (response.is_completed) {
+                        clearInterval(progressInterval);
+                        handleAnalysisCompleted(response.task_status);
+                    }
+                }
+            }
+        });
+    }, 2000);
+}
+
+function updateProgress(percentage, text) {
+    $('#progressBar').css('width', percentage + '%');
+    $('#progressText').text(text);
+}
+
+function getProgressText(taskStatus) {
+    switch(taskStatus.status) {
+        case 'processing': return '正在分析匹配...';
+        case 'completed': return '分析完成！';
+        case 'failed': return '分析失败';
+        default: return taskStatus.status;
+    }
+}
+
+function handleAnalysisCompleted(taskStatus) {
+    if (taskStatus.status === 'completed') {
+        updateProgress(100, '分析完成！');
+        showMessage(`分析完成！找到 ${taskStatus.results_count || 0} 个匹配结果`, 'success');
+        
+        // 显示最优匹配
+        if (taskStatus.optimal_match) {
+            showOptimalResult(taskStatus.optimal_match);
+        }
+        
+        // 延迟跳转到结果页面
+        setTimeout(function() {
+            window.location.href = `{% url "matching:results" %}?shoe_id=${selectedShoeId}`;
+        }, 3000);
+    } else {
+        showMessage('分析失败: ' + (taskStatus.error_message || '未知错误'), 'error');
+    }
+    
+    resetAnalysisState();
+}
+
+function showOptimalResult(optimalMatch) {
+    if (!optimalMatch) return;
+    
+    const resultHtml = `
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong>${optimalMatch.blank_filename}</strong>
+            <span class="score-badge ${getScoreBadgeClass(optimalMatch.total_score)}">${optimalMatch.total_score.toFixed(1)}</span>
+        </div>
+        <div class="row">
+            <div class="col-6">
+                <small class="text-muted">材料利用率</small><br>
+                <strong>${optimalMatch.material_utilization.toFixed(1)}%</strong>
+            </div>
+            <div class="col-6">
+                <small class="text-muted">成本节省</small><br>
+                <strong>${optimalMatch.cost_savings.toFixed(1)}%</strong>
+            </div>
+        </div>
+    `;
+    
+    $('#optimalResultContent').html(resultHtml);
+    $('#optimalResult').show();
+}
+
+function getScoreBadgeClass(score) {
+    if (score >= 80) return 'score-excellent';
+    if (score >= 60) return 'score-good';
+    return 'score-poor';
+}
+
+function resetAnalysisState() {
+    $('#startAnalysisBtn').prop('disabled', false).html('<i class="fas fa-play"></i> 开始智能分析');
+    clearInterval(progressInterval);
+    progressInterval = null;
+    currentTaskId = null;
+}
+
+function reAnalyze(shoeId, marginDistance) {
+    // 选中对应的鞋模
+    $(`.shoe-item[data-shoe-id="${shoeId}"]`).click();
+    
+    // 设置余量距离
+    $('#marginDistance').val(marginDistance);
+    
+    // 开始分析
+    setTimeout(() => startAnalysis(), 500);
+}
+
+function showMessage(message, type) {
+    const alertClass = type === 'error' ? 'alert-danger' : 
+                      type === 'warning' ? 'alert-warning' : 
+                      type === 'info' ? 'alert-info' : 'alert-success';
+    
+    const $alert = $(`
+        <div class="alert ${alertClass} alert-dismissible fade show position-fixed" 
+             style="top: 80px; right: 20px; z-index: 9999; min-width: 300px;" role="alert">
+            ${message}
+            <button type="button" class="close" data-dismiss="alert">
+                <span>&times;</span>
+            </button>
+        </div>
+    `);
+    
+    $('body').append($alert);
+    
+    setTimeout(() => {
+        $alert.alert('close');
+    }, 5000);
+}
+</script>
+{% endblock %}

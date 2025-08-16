@@ -1,0 +1,23 @@
+# Django项目依赖文件
+Django==4.2.7
+mysqlclient==2.2.0
+python-decouple==3.8
+Pillow==10.1.0
+gunicorn==21.2.0
+
+# 3D处理和数学计算
+numpy==1.24.3
+scipy==1.11.4
+
+# 开发和调试工具  
+django-extensions==3.2.3
+django-debug-toolbar==4.2.0
+
+# API相关
+djangorestframework==3.14.0
+
+# 文件处理
+python-magic==0.4.27
+
+# 时区处理
+pytz==2023.3

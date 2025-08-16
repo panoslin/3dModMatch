@@ -1,0 +1,538 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}智能匹配 - 3D鞋模匹配系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .matching-card {
+        border: 1px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 25px;
+        margin-bottom: 25px;
+        transition: all 0.3s ease;
+        background: white;
+    }
+    
+    .matching-card:hover {
+        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        transform: translateY(-3px);
+    }
+    
+    .model-selector {
+        border: 2px dashed #dee2e6;
+        border-radius: 8px;
+        padding: 20px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .model-selector:hover {
+        border-color: #007bff;
+        background-color: #f8f9fa;
+    }
+    
+    .model-selector.selected {
+        border-color: #28a745;
+        background-color: #d4edda;
+    }
+    
+    .model-preview {
+        max-width: 200px;
+        max-height: 200px;
+        object-fit: contain;
+        margin: 10px auto;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .parameter-slider {
+        width: 100%;
+        margin: 10px 0;
+    }
+    
+    .parameter-value {
+        font-size: 18px;
+        font-weight: bold;
+        color: #007bff;
+        text-align: center;
+        margin: 10px 0;
+    }
+    
+    .start-matching-btn {
+        background: linear-gradient(45deg, #007bff, #0056b3);
+        border: none;
+        color: white;
+        padding: 15px 30px;
+        border-radius: 8px;
+        font-size: 18px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        width: 100%;
+    }
+    
+    .start-matching-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0,123,255,0.3);
+    }
+    
+    .start-matching-btn:disabled {
+        background: #6c757d;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+    }
+    
+    .progress-container {
+        display: none;
+        margin: 20px 0;
+    }
+    
+    .progress-bar {
+        height: 8px;
+        background: #e9ecef;
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    
+    .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #007bff, #28a745);
+        transition: width 0.3s ease;
+        width: 0%;
+    }
+    
+    .recent-tasks {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 20px;
+        margin-top: 30px;
+    }
+    
+    .task-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 0;
+        border-bottom: 1px solid #dee2e6;
+    }
+    
+    .task-item:last-child {
+        border-bottom: none;
+    }
+    
+    .status-badge {
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    
+    .status-pending { background: #fff3cd; color: #856404; }
+    .status-processing { background: #cce5ff; color: #004085; }
+    .status-completed { background: #d4edda; color: #155724; }
+    .status-failed { background: #f8d7da; color: #721c24; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- 页面标题 -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="h3 mb-0 text-gray-800">
+                <i class="fas fa-magic text-primary"></i>
+                智能匹配分析
+            </h1>
+            <p class="text-muted">基于几何特征和余量要求的最优粗胚匹配</p>
+        </div>
+    </div>
+
+    <!-- 匹配配置区域 -->
+    <div class="row">
+        <!-- 鞋模选择 -->
+        <div class="col-md-6">
+            <div class="matching-card">
+                <h5 class="mb-3">
+                    <i class="fas fa-shoe-prints text-primary"></i>
+                    选择鞋模
+                </h5>
+                
+                {% if available_shoes %}
+                    <div class="row">
+                        {% for shoe in available_shoes %}
+                        <div class="col-md-6 mb-3">
+                            <div class="model-selector" data-model-id="{{ shoe.id }}" data-model-type="shoe">
+                                <div class="model-preview">
+                                    <i class="fas fa-cube fa-3x text-primary"></i>
+                                </div>
+                                <div class="mt-2">
+                                    <strong>{{ shoe.filename }}</strong><br>
+                                    <small class="text-muted">{{ shoe.file_format|upper }}</small>
+                                </div>
+                                {% if shoe.bounds %}
+                                <div class="mt-2">
+                                    <small class="text-info">
+                                        尺寸: {{ shoe.bounds.x_size|default:0|floatformat:1 }} × 
+                                        {{ shoe.bounds.y_size|default:0|floatformat:1 }} × 
+                                        {{ shoe.bounds.z_size|default:0|floatformat:1 }} mm
+                                    </small>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center text-muted py-4">
+                        <i class="fas fa-exclamation-triangle fa-2x mb-3"></i>
+                        <p>没有可用的鞋模文件</p>
+                        <a href="{% url 'core:upload' %}" class="btn btn-primary">上传鞋模</a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 匹配参数设置 -->
+        <div class="col-md-6">
+            <div class="matching-card">
+                <h5 class="mb-3">
+                    <i class="fas fa-cogs text-success"></i>
+                    匹配参数
+                </h5>
+                
+                <div class="mb-4">
+                    <label for="marginDistance" class="form-label">
+                        <strong>余量距离 (mm)</strong>
+                    </label>
+                    <input type="range" class="parameter-slider" id="marginDistance" 
+                           min="0.5" max="10.0" step="0.5" value="2.5">
+                    <div class="parameter-value" id="marginValue">2.5 mm</div>
+                    <small class="text-muted">确保粗胚在所有点都有足够的余量</small>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="precisionLevel" class="form-label">
+                        <strong>匹配精度</strong>
+                    </label>
+                    <select class="form-select" id="precisionLevel">
+                        <option value="high">高精度 (推荐)</option>
+                        <option value="medium">中等精度</option>
+                        <option value="low">快速匹配</option>
+                    </select>
+                    <small class="text-muted">精度越高，匹配越准确，但处理时间越长</small>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="priorityMode" class="form-label">
+                        <strong>优化模式</strong>
+                    </label>
+                    <select class="form-select" id="priorityMode">
+                        <option value="cost">成本优先 (推荐)</option>
+                        <option value="quality">质量优先</option>
+                        <option value="balanced">平衡模式</option>
+                    </select>
+                    <small class="text-muted">成本优先选择最小粗胚，质量优先确保最佳匹配</small>
+                </div>
+                
+                <button class="start-matching-btn" id="startMatchingBtn" onclick="startMatching()">
+                    <i class="fas fa-play"></i>
+                    开始智能匹配
+                </button>
+                
+                <!-- 进度条 -->
+                <div class="progress-container" id="progressContainer">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>匹配分析中...</span>
+                        <span id="progressPercent">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 匹配说明 -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-info-circle text-info"></i>
+                        匹配算法说明
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <h6><i class="fas fa-cube text-primary"></i> 几何特征分析</h6>
+                            <ul class="list-unstyled">
+                                <li>• 形状直方图特征提取</li>
+                                <li>• 曲率分析和特征点识别</li>
+                                <li>• 体积和表面积计算</li>
+                                <li>• 3D空间分布分析</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <h6><i class="fas fa-ruler text-success"></i> 余量计算</h6>
+                            <ul class="list-unstyled">
+                                <li>• KDTree快速距离计算</li>
+                                <li>• 确保95%以上点满足余量</li>
+                                <li>• 最小/最大/平均余量统计</li>
+                                <li>• 余量覆盖率验证</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <h6><i class="fas fa-chart-line text-warning"></i> 智能评分</h6>
+                            <ul class="list-unstyled">
+                                <li>• 几何相似度 (40%)</li>
+                                <li>• 余量覆盖率 (40%)</li>
+                                <li>• 体积效率 (20%)</li>
+                                <li>• 成本优化排序</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 最近匹配任务 -->
+    {% if recent_tasks %}
+    <div class="recent-tasks">
+        <h5 class="mb-3">
+            <i class="fas fa-history text-secondary"></i>
+            最近匹配任务
+        </h5>
+        
+        {% for task in recent_tasks %}
+        <div class="task-item">
+            <div>
+                <strong>{{ task.shoe_model.filename }}</strong>
+                <br>
+                <small class="text-muted">
+                    余量: {{ task.margin_distance }}mm | 
+                    创建时间: {{ task.created_at|date:"Y-m-d H:i" }}
+                </small>
+            </div>
+            <div>
+                <span class="status-badge status-{{ task.status }}">
+                    {% if task.status == 'pending' %}待处理
+                    {% elif task.status == 'processing' %}处理中
+                    {% elif task.status == 'completed' %}已完成
+                    {% elif task.status == 'failed' %}失败
+                    {% else %}{{ task.status }}{% endif %}
+                </span>
+                
+                {% if task.status == 'completed' %}
+                <a href="{% url 'core:matching_results' task.task_id %}" 
+                   class="btn btn-sm btn-outline-primary ms-2">
+                    查看结果
+                </a>
+                <a href="{% url 'core:3d_comparison' %}?shoe_id={{ task.shoe_model.id }}&blank_id={{ task.blank_model.id|default:'' }}" 
+                   class="btn btn-sm btn-outline-success ms-2">
+                    <i class="fas fa-cube"></i> 3D对比
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<!-- 匹配结果模态框 -->
+<div class="modal fade" id="matchingResultModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">匹配分析完成</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="matchingResultContent">
+                    <!-- 动态加载匹配结果 -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                <a href="#" class="btn btn-primary" id="viewResultsBtn">查看详细结果</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let selectedShoeId = null;
+let selectedShoeType = null;
+
+// 初始化页面
+document.addEventListener('DOMContentLoaded', function() {
+    initializeSliders();
+    initializeModelSelectors();
+});
+
+// 初始化滑块
+function initializeSliders() {
+    const marginSlider = document.getElementById('marginDistance');
+    const marginValue = document.getElementById('marginValue');
+    
+    marginSlider.addEventListener('input', function() {
+        marginValue.textContent = this.value + ' mm';
+    });
+}
+
+// 初始化模型选择器
+function initializeModelSelectors() {
+    const selectors = document.querySelectorAll('.model-selector');
+    
+    selectors.forEach(selector => {
+        selector.addEventListener('click', function() {
+            // 移除其他选择器的选中状态
+            selectors.forEach(s => s.classList.remove('selected'));
+            
+            // 选中当前选择器
+            this.classList.add('selected');
+            
+            // 保存选择
+            selectedShoeId = this.dataset.modelId;
+            selectedShoeType = this.dataset.modelType;
+            
+            // 启用开始匹配按钮
+            document.getElementById('startMatchingBtn').disabled = false;
+        });
+    });
+}
+
+// 开始匹配
+function startMatching() {
+    if (!selectedShoeId) {
+        alert('请先选择一个鞋模');
+        return;
+    }
+    
+    const marginDistance = document.getElementById('marginDistance').value;
+    const precisionLevel = document.getElementById('precisionLevel').value;
+    const priorityMode = document.getElementById('priorityMode').value;
+    
+    // 显示进度条
+    document.getElementById('progressContainer').style.display = 'block';
+    document.getElementById('startMatchingBtn').disabled = true;
+    
+    // 模拟进度更新
+    simulateProgress();
+    
+    // 调用匹配API
+    fetch('/matching/analyze/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({
+            shoe_model_id: selectedShoeId,
+            margin_distance: parseFloat(marginDistance),
+            precision_level: precisionLevel,
+            priority_mode: priorityMode
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // 匹配成功，显示结果
+            showMatchingResult(data);
+        } else {
+            // 匹配失败
+            alert('匹配分析失败: ' + data.error);
+            resetMatchingUI();
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('匹配分析失败，请重试');
+        resetMatchingUI();
+    });
+}
+
+// 模拟进度更新
+function simulateProgress() {
+    let progress = 0;
+    const progressFill = document.getElementById('progressFill');
+    const progressPercent = document.getElementById('progressPercent');
+    
+    const interval = setInterval(() => {
+        progress += Math.random() * 15;
+        if (progress >= 100) {
+            progress = 100;
+            clearInterval(interval);
+        }
+        
+        progressFill.style.width = progress + '%';
+        progressPercent.textContent = Math.round(progress) + '%';
+    }, 200);
+}
+
+// 显示匹配结果
+function showMatchingResult(data) {
+    const content = `
+        <div class="text-center">
+            <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+            <h5 class="text-success">匹配分析完成！</h5>
+            <p>找到 ${data.results.length} 个匹配结果</p>
+            ${data.optimal_match ? `
+            <div class="alert alert-success">
+                <strong>最优匹配:</strong> ${data.optimal_match.blank_name}<br>
+                <strong>匹配分数:</strong> ${data.optimal_match.match_score}<br>
+                <strong>材料利用率:</strong> ${data.optimal_match.material_utilization}%
+            </div>
+            ` : ''}
+        </div>
+    `;
+    
+    document.getElementById('matchingResultContent').innerHTML = content;
+    
+    // 设置查看结果按钮链接
+    if (data.task_id) {
+        document.getElementById('viewResultsBtn').href = `/matching/results/${data.task_id}/`;
+    }
+    
+    // 显示模态框
+    new bootstrap.Modal(document.getElementById('matchingResultModal')).show();
+    
+    // 重置UI
+    resetMatchingUI();
+}
+
+// 重置匹配UI
+function resetMatchingUI() {
+    document.getElementById('progressContainer').style.display = 'none';
+    document.getElementById('startMatchingBtn').disabled = false;
+    
+    // 重置进度条
+    document.getElementById('progressFill').style.width = '0%';
+    document.getElementById('progressPercent').textContent = '0%';
+}
+
+// 获取CSRF Token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}

@@ -1,0 +1,456 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}文件上传 - 3D鞋模匹配系统{% endblock %}
+
+{% block extra_css %}
+<style>
+.upload-container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.file-drop-zone {
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    padding: 40px 20px;
+    text-align: center;
+    background: #f8f9fa;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    min-height: 120px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.file-drop-zone:hover {
+    border-color: #007bff;
+    background: #e3f2fd;
+}
+
+.file-drop-zone.dragover {
+    border-color: #28a745;
+    background: #d4edda;
+}
+
+.file-info {
+    font-size: 14px;
+    color: #6c757d;
+    margin-top: 10px;
+}
+
+.file-list {
+    margin-top: 15px;
+}
+
+.file-item {
+    background: #f8f9fa;
+    border-radius: 5px;
+    padding: 10px 15px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.file-item .file-name {
+    font-weight: 500;
+}
+
+.file-item .file-size {
+    font-size: 12px;
+    color: #6c757d;
+}
+
+.progress-bar-container {
+    width: 100%;
+    background: #e9ecef;
+    border-radius: 10px;
+    height: 8px;
+    margin-top: 10px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(45deg, #007bff, #0056b3);
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+.upload-stats {
+    background: linear-gradient(45deg, #f8f9fa, #e9ecef);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 30px;
+}
+
+.btn-upload {
+    background: linear-gradient(45deg, #28a745, #20a83a);
+    border: none;
+    padding: 12px 30px;
+    font-weight: bold;
+    border-radius: 25px;
+    min-width: 120px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container upload-container mt-4">
+    <!-- 标题区域 -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2><i class="fas fa-cloud-upload-alt text-primary"></i> 文件上传</h2>
+                    <p class="text-muted mb-0">上传您的鞋模和粗胚文件，系统将自动分析和匹配</p>
+                </div>
+                <div>
+                    <a href="{% url 'core:file_list' %}" class="btn btn-outline-primary">
+                        <i class="fas fa-list"></i> 查看文件
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 上传统计 -->
+    <div class="upload-stats">
+        <div class="row text-center">
+            <div class="col-md-3">
+                <div class="stat-item">
+                    <h4 class="text-primary mb-1">{{ stats.shoe_models }}</h4>
+                    <small class="text-muted">鞋模文件</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-item">
+                    <h4 class="text-success mb-1">{{ stats.blank_models }}</h4>
+                    <small class="text-muted">粗胚文件</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-item">
+                    <h4 class="text-info mb-1">{{ stats.total_matches }}</h4>
+                    <small class="text-muted">匹配结果</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-item">
+                    <h4 class="text-warning mb-1">{{ stats.avg_utilization|floatformat:1 }}%</h4>
+                    <small class="text-muted">平均利用率</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 上传表单 -->
+    <form method="post" enctype="multipart/form-data" id="uploadForm">
+        {% csrf_token %}
+        
+        <div class="row">
+            <!-- 鞋模文件上传 -->
+            <div class="col-md-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="fas fa-shoe-prints"></i> 鞋模文件</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="file-drop-zone" data-target="shoe_files">
+                            <div class="drop-icon">
+                                <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3"></i>
+                            </div>
+                            <h6>点击选择或拖拽文件到此处</h6>
+                            <div class="file-info">
+                                支持 .3dm 和 .MOD 格式<br>
+                                最大文件大小: 100MB
+                            </div>
+                        </div>
+                        {{ form.shoe_files }}
+                        <div class="file-list" id="shoe_files_list"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 粗胚文件上传 -->
+            <div class="col-md-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0"><i class="fas fa-cube"></i> 粗胚文件</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="file-drop-zone" data-target="blank_files">
+                            <div class="drop-icon">
+                                <i class="fas fa-cloud-upload-alt fa-3x text-success mb-3"></i>
+                            </div>
+                            <h6>点击选择或拖拽文件到此处</h6>
+                            <div class="file-info">
+                                支持 .3dm 和 .MOD 格式<br>
+                                最大文件大小: 100MB
+                            </div>
+                        </div>
+                        {{ form.blank_files }}
+                        <div class="file-list" id="blank_files_list"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 上传选项 -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-cog"></i> 处理选项</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        {{ form.margin_distance.label_tag }}
+                        {{ form.margin_distance }}
+                        <small class="form-text text-muted">{{ form.margin_distance.help_text }}</small>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="custom-control custom-checkbox mt-4">
+                            {{ form.auto_process }}
+                            {{ form.auto_process.label_tag }}
+                            <small class="form-text text-muted">{{ form.auto_process.help_text }}</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 提交按钮 -->
+        <div class="text-center mb-4">
+            <button type="submit" class="btn btn-upload btn-lg" id="uploadBtn" disabled>
+                <i class="fas fa-upload"></i> 开始上传
+            </button>
+            <div class="progress-bar-container mt-3" id="uploadProgress" style="display: none;">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+        </div>
+    </form>
+
+    <!-- 上传说明 -->
+    <div class="row mt-5">
+        <div class="col-12">
+            <div class="card border-info">
+                <div class="card-header bg-info text-white">
+                    <h6 class="mb-0"><i class="fas fa-info-circle"></i> 上传说明</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>📁 支持的文件格式</h6>
+                            <ul class="mb-3">
+                                <li><strong>.3dm</strong> - Rhinoceros 3D 模型文件</li>
+                                <li><strong>.MOD</strong> - CAD 模型文件</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>⚡ 处理流程</h6>
+                            <ul class="mb-3">
+                                <li>文件格式验证和大小检查</li>
+                                <li>3D模型数据解析和分析</li>
+                                <li>几何特征提取和计算</li>
+                                <li>自动匹配分析（可选）</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="alert alert-warning mb-0">
+                        <strong><i class="fas fa-exclamation-triangle"></i> 注意事项：</strong>
+                        上传的文件将被自动分析，大文件可能需要较长处理时间。请确保文件格式正确且数据完整。
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    // 文件选择和拖拽功能
+    initFileDropZones();
+    
+    // 表单验证
+    initFormValidation();
+    
+    // 上传进度
+    initUploadProgress();
+});
+
+function initFileDropZones() {
+    $('.file-drop-zone').each(function() {
+        const $dropZone = $(this);
+        const target = $dropZone.data('target');
+        const $fileInput = $(`#id_${target}`);
+        const $fileList = $(`#${target}_list`);
+        
+        // 点击选择文件
+        $dropZone.on('click', function() {
+            $fileInput.click();
+        });
+        
+        // 文件选择事件
+        $fileInput.on('change', function() {
+            updateFileList(this.files, $fileList, target);
+            updateUploadButton();
+        });
+        
+        // 拖拽事件
+        $dropZone.on('dragover dragenter', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            $dropZone.addClass('dragover');
+        });
+        
+        $dropZone.on('dragleave drop', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            $dropZone.removeClass('dragover');
+            
+            if (e.type === 'drop') {
+                const files = e.originalEvent.dataTransfer.files;
+                $fileInput[0].files = files;
+                updateFileList(files, $fileList, target);
+                updateUploadButton();
+            }
+        });
+    });
+}
+
+function updateFileList(files, $fileList, target) {
+    $fileList.empty();
+    
+    if (files.length === 0) return;
+    
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const fileSize = formatFileSize(file.size);
+        const isValid = validateFile(file);
+        
+        const $fileItem = $(`
+            <div class="file-item ${isValid ? 'border-success' : 'border-danger'}">
+                <div>
+                    <div class="file-name">${file.name}</div>
+                    <div class="file-size">${fileSize}</div>
+                </div>
+                <div>
+                    ${isValid ? 
+                        '<i class="fas fa-check-circle text-success"></i>' : 
+                        '<i class="fas fa-exclamation-triangle text-danger"></i>'
+                    }
+                </div>
+            </div>
+        `);
+        
+        $fileList.append($fileItem);
+    }
+}
+
+function validateFile(file) {
+    const validExtensions = ['.3dm', '.mod', '.MOD'];
+    const maxSize = 100 * 1024 * 1024; // 100MB
+    
+    const extension = '.' + file.name.split('.').pop();
+    return validExtensions.includes(extension) && file.size <= maxSize;
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function updateUploadButton() {
+    const shoeFiles = $('#id_shoe_files')[0].files;
+    const blankFiles = $('#id_blank_files')[0].files;
+    const hasFiles = shoeFiles.length > 0 || blankFiles.length > 0;
+    
+    $('#uploadBtn').prop('disabled', !hasFiles);
+}
+
+function initFormValidation() {
+    $('#uploadForm').on('submit', function(e) {
+        e.preventDefault();
+        
+        const shoeFiles = $('#id_shoe_files')[0].files;
+        const blankFiles = $('#id_blank_files')[0].files;
+        
+        // 验证文件
+        let isValid = true;
+        const allFiles = [...shoeFiles, ...blankFiles];
+        
+        for (let file of allFiles) {
+            if (!validateFile(file)) {
+                isValid = false;
+                break;
+            }
+        }
+        
+        if (!isValid) {
+            showMessage('请检查文件格式和大小', 'error');
+            return;
+        }
+        
+        if (allFiles.length === 0) {
+            showMessage('请至少选择一个文件', 'warning');
+            return;
+        }
+        
+        // 开始上传
+        startUpload();
+    });
+}
+
+function initUploadProgress() {
+    // 模拟上传进度（实际项目中应该使用AJAX上传）
+    window.startUpload = function() {
+        $('#uploadBtn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> 上传中...');
+        $('#uploadProgress').show();
+        
+        let progress = 0;
+        const interval = setInterval(() => {
+            progress += Math.random() * 15;
+            if (progress > 100) progress = 100;
+            
+            $('#progressBar').css('width', progress + '%');
+            
+            if (progress >= 100) {
+                clearInterval(interval);
+                setTimeout(() => {
+                    // 提交表单
+                    $('#uploadForm')[0].submit();
+                }, 500);
+            }
+        }, 200);
+    };
+}
+
+function showMessage(message, type) {
+    const alertClass = type === 'error' ? 'alert-danger' : 
+                      type === 'warning' ? 'alert-warning' : 'alert-info';
+    
+    const $alert = $(`
+        <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="close" data-dismiss="alert">
+                <span>&times;</span>
+            </button>
+        </div>
+    `);
+    
+    $('.upload-container').prepend($alert);
+    
+    setTimeout(() => {
+        $alert.alert('close');
+    }, 5000);
+}
+</script>
+{% endblock %}

@@ -1,0 +1,636 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}3D匹配对比 - {{ shoe_model.filename }} vs {{ blank_model.filename }} - 3D鞋模匹配系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .comparison-container {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    }
+    
+    .header-panel {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        padding: 20px;
+        border-bottom: 1px solid #dee2e6;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    .model-info {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    
+    .model-card {
+        background: white;
+        border-radius: 8px;
+        padding: 15px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        flex: 1;
+        margin: 0 10px;
+    }
+    
+    .model-card.shoe {
+        border-left: 4px solid #007bff;
+    }
+    
+    .model-card.blank {
+        border-left: 4px solid #28a745;
+    }
+    
+    .viewer-container {
+        flex: 1;
+        display: flex;
+        position: relative;
+    }
+    
+    .viewer-panel {
+        flex: 1;
+        position: relative;
+        border: 1px solid #dee2e6;
+        margin: 10px;
+        border-radius: 8px;
+        overflow: hidden;
+        background: white;
+    }
+    
+    .viewer-title {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: 5px 10px;
+        border-radius: 4px;
+        font-size: 12px;
+        z-index: 1000;
+    }
+    
+    .controls-panel {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 8px;
+        padding: 20px;
+        max-width: 300px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        z-index: 1000;
+    }
+    
+    .view-mode-buttons {
+        display: flex;
+        gap: 5px;
+        margin-top: 10px;
+        flex-wrap: wrap;
+    }
+    
+    .view-mode-btn {
+        padding: 8px 12px;
+        border: 1px solid #dee2e6;
+        background: white;
+        border-radius: 4px;
+        font-size: 11px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        flex: 1;
+        min-width: 60px;
+    }
+    
+    .view-mode-btn:hover {
+        background: #007bff;
+        color: white;
+        border-color: #007bff;
+    }
+    
+    .view-mode-btn.active {
+        background: #007bff;
+        color: white;
+        border-color: #007bff;
+    }
+    
+    .heatmap-toggle {
+        background: #28a745;
+        color: white;
+        border-color: #28a745;
+    }
+    
+    .section-toggle {
+        background: #ffc107;
+        color: #212529;
+        border-color: #ffc107;
+    }
+    
+    .animation-toggle {
+        background: #dc3545;
+        color: white;
+        border-color: #dc3545;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="comparison-container">
+    <!-- 头部信息面板 -->
+    <div class="header-panel">
+        <h2 class="mb-3">
+            <i class="fas fa-cube"></i> 3D匹配对比分析
+        </h2>
+        
+        <div class="model-info">
+            <div class="model-card shoe">
+                <div class="model-title">
+                    <i class="fas fa-shoe-prints text-primary"></i> 鞋模模型
+                </div>
+                <div class="model-details">
+                    <strong>{{ shoe_model.filename }}</strong><br>
+                    格式: {{ shoe_model.file_format|upper }} | 
+                    体积: {{ shoe_model.volume|default:"计算中..."|floatformat:2 }} mm³
+                </div>
+            </div>
+            
+            <div class="model-card blank">
+                <div class="model-title">
+                    <i class="fas fa-cube text-success"></i> 粗胚模型
+                </div>
+                <div class="model-details">
+                    <strong>{{ blank_model.filename }}</strong><br>
+                    格式: {{ blank_model.file_format|upper }} | 
+                    体积: {{ blank_model.volume|default:"计算中..."|floatformat:2 }} mm³
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 3D查看器容器 -->
+    <div class="viewer-container">
+        <!-- 鞋模查看器 -->
+        <div class="viewer-panel">
+            <div class="viewer-title">鞋模模型</div>
+            <div id="shoeViewer" style="width: 100%; height: 100%;"></div>
+        </div>
+        
+        <!-- 粗胚查看器 -->
+        <div class="viewer-panel">
+            <div class="viewer-title">粗胚模型</div>
+            <div id="blankViewer" style="width: 100%; height: 100%;"></div>
+        </div>
+    </div>
+    
+    <!-- 控制面板 -->
+    <div class="controls-panel">
+        <h6><i class="fas fa-sliders-h"></i> 视图控制</h6>
+        
+        <div class="view-mode-buttons">
+            <button class="view-mode-btn active" onclick="setViewMode('solid', this)">实体</button>
+            <button class="view-mode-btn" onclick="setViewMode('wireframe', this)">线框</button>
+            <button class="view-mode-btn" onclick="setViewMode('points', this)">点云</button>
+        </div>
+        
+        <div class="view-mode-buttons">
+            <button class="view-mode-btn heatmap-toggle" id="heatmapToggle" onclick="toggleHeatmap()">
+                <i class="fas fa-fire"></i> 热力图
+            </button>
+            <button class="view-mode-btn section-toggle" id="sectionToggle" onclick="toggleSection()">
+                <i class="fas fa-cut"></i> 截面
+            </button>
+            <button class="view-mode-btn animation-toggle" id="animationToggle" onclick="toggleAnimation()">
+                <i class="fas fa-play"></i> 动画
+            </button>
+        </div>
+        
+        <div class="view-mode-buttons">
+            <button class="btn btn-primary btn-sm w-100" onclick="resetView()">
+                <i class="fas fa-undo"></i> 重置视图
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Three.js 核心库 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<!-- 增强功能库 -->
+<script src="{% static 'js/heatmap.js' %}"></script>
+
+<script>
+// 全局变量
+let shoeScene, shoeCamera, shoeRenderer, shoeControls;
+let blankScene, blankCamera, blankRenderer, blankControls;
+let shoeModel, blankModel;
+let isHeatmapEnabled = false;
+let isSectionEnabled = false;
+let isAnimationEnabled = false;
+
+// 增强功能实例
+let shoeHeatmapRenderer, blankHeatmapRenderer;
+let shoeSectionAnalyzer, blankSectionAnalyzer;
+let animationController;
+
+// 初始化函数
+document.addEventListener('DOMContentLoaded', function() {
+    initializeViewers();
+    loadModels();
+    initializeEnhancedFeatures();
+});
+
+// 初始化两个查看器
+function initializeViewers() {
+    initializeViewer('shoeViewer', 'shoe');
+    initializeViewer('blankViewer', 'blank');
+}
+
+// 初始化单个查看器
+function initializeViewer(containerId, type) {
+    const container = document.getElementById(containerId);
+    
+    // 创建场景
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xf8f9fa);
+    
+    // 创建相机
+    const camera = new THREE.PerspectiveCamera(
+        75, 
+        container.clientWidth / container.clientHeight, 
+        0.1, 
+        1000
+    );
+    camera.position.set(5, 5, 5);
+    
+    // 创建渲染器
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.shadowMap.enabled = true;
+    container.appendChild(renderer.domElement);
+    
+    // 创建控制器
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    
+    // 添加光源
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+    scene.add(ambientLight);
+    
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(10, 10, 5);
+    scene.add(directionalLight);
+    
+    // 根据类型设置全局变量
+    if (type === 'shoe') {
+        shoeScene = scene;
+        shoeCamera = camera;
+        shoeRenderer = renderer;
+        shoeControls = controls;
+        animateShoe();
+    } else {
+        blankScene = scene;
+        blankCamera = camera;
+        blankRenderer = renderer;
+        blankControls = controls;
+        animateBlank();
+    }
+}
+
+// 加载模型
+function loadModels() {
+    // 加载鞋模
+    const shoeGeometry = new THREE.BoxGeometry(2, 1, 1);
+    const shoeMaterial = new THREE.MeshPhongMaterial({ 
+        color: 0x007bff,
+        transparent: true,
+        opacity: 0.8
+    });
+    shoeModel = new THREE.Mesh(shoeGeometry, shoeMaterial);
+    shoeScene.add(shoeModel);
+    
+    // 加载粗胚
+    const blankGeometry = new THREE.SphereGeometry(1.5, 32, 32);
+    const blankMaterial = new THREE.MeshPhongMaterial({ 
+        color: 0x28a745,
+        transparent: true,
+        opacity: 0.8
+    });
+    blankModel = new THREE.Mesh(blankGeometry, blankMaterial);
+    blankScene.add(blankModel);
+}
+
+// 初始化增强功能
+function initializeEnhancedFeatures() {
+    // 初始化热力图渲染器
+    shoeHeatmapRenderer = new HeatmapRenderer(shoeScene, shoeModel);
+    blankHeatmapRenderer = new HeatmapRenderer(blankScene, blankModel);
+    
+    // 初始化截面分析器
+    shoeSectionAnalyzer = new SectionAnalyzer(shoeScene, shoeModel);
+    blankSectionAnalyzer = new SectionAnalyzer(blankScene, blankModel);
+    
+    // 初始化动画控制器
+    animationController = new AnimationController();
+    
+    // 添加匹配动画
+    const matchData = {
+        analysis_details: {
+            avg_margin: {{ average_margin|default:2.5 }},
+            min_margin: {{ min_margin|default:1.0 }},
+            max_margin: {{ max_margin|default:5.0 }},
+            margin_coverage: {{ coverage_score|default:95.0 }} / 100
+        }
+    };
+    
+    animationController.addMatchingAnimation(shoeModel, blankModel, matchData);
+}
+
+// 渲染循环
+function animateShoe() {
+    requestAnimationFrame(animateShoe);
+    if (shoeControls) shoeControls.update();
+    
+    // 更新热力图动画
+    if (isHeatmapEnabled && shoeHeatmapRenderer) {
+        shoeHeatmapRenderer.updateAnimation(Date.now() * 0.001);
+    }
+    
+    if (shoeRenderer && shoeScene && shoeCamera) {
+        shoeRenderer.render(shoeScene, shoeCamera);
+    }
+}
+
+function animateBlank() {
+    requestAnimationFrame(animateBlank);
+    if (blankControls) blankControls.update();
+    
+    // 更新热力图动画
+    if (isHeatmapEnabled && blankHeatmapRenderer) {
+        blankHeatmapRenderer.updateAnimation(Date.now() * 0.001);
+    }
+    
+    if (blankRenderer && blankScene && blankCamera) {
+        blankRenderer.render(blankScene, blankCamera);
+    }
+}
+
+// 设置视图模式
+function setViewMode(mode, button) {
+    document.querySelectorAll('.view-mode-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    button.classList.add('active');
+    
+    const models = [shoeModel, blankModel];
+    models.forEach(model => {
+        if (model) {
+            switch (mode) {
+                case 'solid':
+                    model.material.wireframe = false;
+                    model.material.transparent = true;
+                    model.material.opacity = 0.8;
+                    break;
+                case 'wireframe':
+                    model.material.wireframe = true;
+                    model.material.transparent = false;
+                    break;
+                case 'points':
+                    model.material.wireframe = false;
+                    model.material.transparent = false;
+                    break;
+            }
+        }
+    });
+}
+
+// 切换热力图
+function toggleHeatmap() {
+    isHeatmapEnabled = !isHeatmapEnabled;
+    const button = document.getElementById('heatmapToggle');
+    
+    if (isHeatmapEnabled) {
+        button.innerHTML = '<i class="fas fa-fire"></i> 关闭热力图';
+        button.classList.add('active');
+        applyHeatmap();
+    } else {
+        button.innerHTML = '<i class="fas fa-fire"></i> 热力图';
+        button.classList.remove('active');
+        removeHeatmap();
+    }
+}
+
+// 应用热力图效果
+function applyHeatmap() {
+    if (shoeModel && blankModel) {
+        // 使用增强的热力图渲染器
+        const matchData = {
+            analysis_details: {
+                avg_margin: {{ average_margin|default:2.5 }},
+                min_margin: {{ min_margin|default:1.0 }},
+                max_margin: {{ max_margin|default:5.0 }},
+                margin_coverage: {{ coverage_score|default:95.0 }} / 100
+            }
+        };
+        
+        const marginDistance = {{ average_margin|default:2.5 }};
+        
+        shoeHeatmapRenderer.generateHeatmap(matchData, marginDistance);
+        blankHeatmapRenderer.generateHeatmap(matchData, marginDistance);
+        
+        // 显示热力图统计信息
+        showHeatmapStatistics();
+    }
+}
+
+// 热力图动画
+function animateHeatmap() {
+    if (!isHeatmapEnabled) return;
+    
+    if (shoeModel && shoeModel.material.uniforms) {
+        shoeModel.material.uniforms.time.value += 0.05;
+    }
+    if (blankModel && blankModel.material.uniforms) {
+        blankModel.material.uniforms.time.value += 0.05;
+    }
+    
+    requestAnimationFrame(animateHeatmap);
+}
+
+// 移除热力图
+function removeHeatmap() {
+    // 使用增强的热力图渲染器清除热力图
+    shoeHeatmapRenderer.clearHeatmap();
+    blankHeatmapRenderer.clearHeatmap();
+    
+    // 隐藏热力图统计信息
+    hideHeatmapStatistics();
+}
+
+// 切换截面分析
+function toggleSection() {
+    isSectionEnabled = !isSectionEnabled;
+    const button = document.getElementById('sectionToggle');
+    
+    if (isSectionEnabled) {
+        button.innerHTML = '<i class="fas fa-cut"></i> 关闭截面';
+        button.classList.add('active');
+        applySection();
+    } else {
+        button.innerHTML = '<i class="fas fa-cut"></i> 截面';
+        button.classList.remove('active');
+        removeSection();
+    }
+}
+
+// 应用截面分析
+function applySection() {
+    if (shoeModel && blankModel) {
+        // 使用增强的截面分析器
+        const position = new THREE.Vector3(0, 0, 0);
+        const normal = new THREE.Vector3(0, 1, 0);
+        
+        shoeSectionAnalyzer.createSectionPlane(position, normal);
+        blankSectionAnalyzer.createSectionPlane(position, normal);
+        
+        // 显示截面控制
+        showSectionControls();
+    }
+}
+
+// 移除截面分析
+function removeSection() {
+    // 使用增强的截面分析器清除截面
+    shoeSectionAnalyzer.clearSection();
+    blankSectionAnalyzer.clearSection();
+    
+    // 隐藏截面控制
+    hideSectionControls();
+}
+
+// 切换动画
+function toggleAnimation() {
+    isAnimationEnabled = !isAnimationEnabled;
+    const button = document.getElementById('animationToggle');
+    
+    if (isAnimationEnabled) {
+        button.innerHTML = '<i class="fas fa-pause"></i> 暂停动画';
+        button.classList.add('active');
+        startAnimation();
+    } else {
+        button.innerHTML = '<i class="fas fa-play"></i> 动画';
+        button.classList.remove('active');
+        stopAnimation();
+    }
+}
+
+// 开始动画
+function startAnimation() {
+    if (shoeModel && blankModel) {
+        // 使用增强的动画控制器
+        animationController.play();
+        
+        // 显示动画控制
+        showAnimationControls();
+    }
+}
+
+// 停止动画
+function stopAnimation() {
+    // 使用增强的动画控制器停止动画
+    animationController.stop();
+    
+    // 隐藏动画控制
+    hideAnimationControls();
+}
+
+// 重置视图
+function resetView() {
+    if (shoeControls) shoeControls.reset();
+    if (blankControls) blankControls.reset();
+    
+    if (shoeModel) {
+        shoeModel.rotation.set(0, 0, 0);
+        shoeModel.scale.set(1, 1, 1);
+    }
+    
+    if (blankModel) {
+        blankModel.rotation.set(0, 0, 0);
+        blankModel.scale.set(1, 1, 1);
+    }
+}
+
+// 显示热力图统计信息
+function showHeatmapStatistics() {
+    const shoeStats = shoeHeatmapRenderer.getStatistics();
+    const blankStats = blankHeatmapRenderer.getStatistics();
+    
+    if (shoeStats && blankStats) {
+        console.log('鞋模热力图统计:', shoeStats);
+        console.log('粗胚热力图统计:', blankStats);
+        
+        // 这里可以创建一个统计信息面板
+        showNotification(`热力图已启用\n鞋模问题区域: ${shoeStats.problemAreas}个\n粗胚问题区域: ${blankStats.problemAreas}个`);
+    }
+}
+
+// 隐藏热力图统计信息
+function hideHeatmapStatistics() {
+    // 隐藏统计信息面板
+}
+
+// 显示截面控制
+function showSectionControls() {
+    showNotification('截面分析已启用\n使用鼠标拖拽移动截面平面');
+}
+
+// 隐藏截面控制
+function hideSectionControls() {
+    // 隐藏截面控制面板
+}
+
+// 显示动画控制
+function showAnimationControls() {
+    showNotification('匹配动画已开始\n展示鞋模和粗胚的匹配过程');
+}
+
+// 隐藏动画控制
+function hideAnimationControls() {
+    // 隐藏动画控制面板
+}
+
+// 显示通知
+function showNotification(message) {
+    // 创建通知元素
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: rgba(0, 123, 255, 0.9);
+        color: white;
+        padding: 15px 20px;
+        border-radius: 8px;
+        z-index: 10000;
+        max-width: 300px;
+        font-size: 14px;
+        white-space: pre-line;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    `;
+    notification.textContent = message;
+    
+    document.body.appendChild(notification);
+    
+    // 3秒后自动消失
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+        }
+    }, 3000);
+}
+</script>
+{% endblock %}
