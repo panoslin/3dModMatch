@@ -31,6 +31,7 @@ services:
     environment:
       - DJANGO_SETTINGS_MODULE=config.settings.production
       - DEBUG=False
+      - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
       - DB_HOST=db
       - DB_NAME=shoe_matching
       - DB_USER=django_user

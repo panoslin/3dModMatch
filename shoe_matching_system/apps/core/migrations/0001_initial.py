@@ -96,7 +96,7 @@ class Migration(migrations.Migration):
                 ('max_margin', models.DecimalField(decimal_places=1, max_digits=4, verbose_name='最大余量(mm)')),
                 ('is_optimal', models.BooleanField(default=False, verbose_name='是否为最优匹配')),
                 ('is_feasible', models.BooleanField(default=True, verbose_name='是否可行（满足余量要求）')),
-                ('analysis_data', models.JSONField(default=dict, help_text='存储完整的几何分析和匹配数据', verbose_name='详细分析数据')),
+                ('analysis_details', models.JSONField(default=dict, help_text='存储完整的几何分析和匹配数据', verbose_name='详细分析数据')),
                 ('computation_time', models.FloatField(blank=True, null=True, verbose_name='计算耗时(秒)')),
                 ('blank_model', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='core.blankmodel', verbose_name='粗胚')),
                 ('shoe_model', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='core.shoemodel', verbose_name='鞋模')),

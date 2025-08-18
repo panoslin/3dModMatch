@@ -1,0 +1,717 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}3D鞋模智能匹配工作台{% endblock %}
+
+{% block extra_css %}
+<style>
+/* 工作台样式 */
+.workspace {
+    display: flex;
+    height: calc(100vh - 60px);
+    background: #f5f7fa;
+}
+
+/* 左侧粗胚库 */
+.blank-library {
+    width: 300px;
+    background: white;
+    border-right: 1px solid #e1e8ed;
+    display: flex;
+    flex-direction: column;
+}
+
+.blank-header {
+    padding: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.blank-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+}
+
+.blank-item {
+    padding: 15px;
+    margin-bottom: 10px;
+    border: 1px solid #e1e8ed;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: white;
+}
+
+.blank-item:hover {
+    background: #f8f9ff;
+    border-color: #667eea;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.blank-item.selected {
+    background: #667eea;
+    color: white;
+    border-color: #667eea;
+}
+
+.blank-score {
+    font-size: 12px;
+    font-weight: bold;
+    margin-top: 5px;
+}
+
+.blank-score.high { color: #28a745; }
+.blank-score.medium { color: #ffc107; }
+.blank-score.low { color: #dc3545; }
+
+.upload-blank {
+    margin-top: 10px;
+    padding: 15px;
+    border: 2px dashed #ccc;
+    border-radius: 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.upload-blank:hover {
+    border-color: #007bff;
+    background: #f8f9ff;
+}
+
+/* 右侧鞋模列表区域 */
+.shoe-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.shoe-toolbar {
+    background: white;
+    padding: 15px 20px;
+    border-bottom: 1px solid #e1e8ed;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.search-box {
+    flex: 1;
+    max-width: 400px;
+}
+
+.search-box input {
+    width: 100%;
+    padding: 8px 15px;
+    border: 1px solid #ddd;
+    border-radius: 20px;
+    outline: none;
+}
+
+.search-box input:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.stats-bar {
+    display: flex;
+    gap: 20px;
+    font-size: 14px;
+}
+
+.stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.stat-value {
+    font-weight: bold;
+    font-size: 18px;
+    color: #2c3e50;
+}
+
+.stat-label {
+    color: #7f8c8d;
+    font-size: 12px;
+}
+
+/* 鞋模列表 */
+.shoe-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.shoe-table {
+    width: 100%;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+.shoe-table thead {
+    background: #f8f9fa;
+}
+
+.shoe-table th,
+.shoe-table td {
+    padding: 15px;
+    text-align: left;
+    border-bottom: 1px solid #e1e8ed;
+}
+
+.shoe-table th {
+    font-weight: 600;
+    color: #2c3e50;
+    border-bottom: 2px solid #e1e8ed;
+}
+
+.shoe-table tbody tr {
+    transition: background 0.2s ease;
+}
+
+.shoe-table tbody tr:hover {
+    background: #f8f9ff;
+}
+
+.shoe-name {
+    font-weight: 500;
+    color: #2c3e50;
+}
+
+.shoe-status {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.status-success { background: #d4edda; color: #155724; }
+.status-info { background: #d1ecf1; color: #0c5460; }
+.status-warning { background: #fff3cd; color: #856404; }
+.status-danger { background: #f8d7da; color: #721c24; }
+
+.utilization-bar {
+    width: 80px;
+    height: 8px;
+    background: #e1e8ed;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.utilization-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.utilization-high { background: #28a745; }
+.utilization-medium { background: #ffc107; }
+.utilization-low { background: #dc3545; }
+
+.action-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-3d {
+    background: #667eea;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+.btn-3d:hover {
+    background: #5a6fd8;
+}
+
+.btn-apply {
+    background: #28a745;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+.btn-apply:hover {
+    background: #218838;
+}
+
+/* 分页 */
+.pagination {
+    padding: 20px;
+    text-align: center;
+    background: white;
+    border-top: 1px solid #e1e8ed;
+}
+
+.pagination a,
+.pagination span {
+    display: inline-block;
+    padding: 8px 12px;
+    margin: 0 2px;
+    border: 1px solid #ddd;
+    text-decoration: none;
+    color: #666;
+    border-radius: 4px;
+}
+
+.pagination .current {
+    background: #667eea;
+    color: white;
+    border-color: #667eea;
+}
+
+.pagination a:hover {
+    background: #f8f9ff;
+    border-color: #667eea;
+}
+
+/* 加载状态 */
+.loading {
+    text-align: center;
+    padding: 40px;
+    color: #7f8c8d;
+}
+
+.loading .spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 20px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+    .blank-library {
+        width: 250px;
+    }
+    
+    .stats-bar {
+        display: none;
+    }
+}
+
+@media (max-width: 768px) {
+    .workspace {
+        flex-direction: column;
+        height: auto;
+    }
+    
+    .blank-library {
+        width: 100%;
+        height: 200px;
+    }
+    
+    .blank-list {
+        display: flex;
+        gap: 10px;
+        overflow-x: auto;
+        padding: 10px;
+    }
+    
+    .blank-item {
+        min-width: 200px;
+        margin-bottom: 0;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="workspace">
+    <!-- 左侧粗胚库 -->
+    <div class="blank-library">
+        <div class="blank-header">
+            <h4>📁 粗胚资源库</h4>
+            <p style="font-size: 12px; opacity: 0.9; margin: 5px 0 0 0;">
+                共 {{ blank_models.count }} 个粗胚
+            </p>
+        </div>
+        
+        <div class="blank-list">
+            {% for blank in blank_models %}
+            <div class="blank-item" onclick="selectBlank({{ blank.id }}, '{{ blank.filename }}')" data-blank-id="{{ blank.id }}">
+                <div class="blank-name">
+                    <strong>{{ blank.filename }}</strong>
+                </div>
+                <div class="blank-score {% if blank.avg_utilization >= 90 %}high{% elif blank.avg_utilization >= 70 %}medium{% else %}low{% endif %}">
+                    利用率: {% if blank.avg_utilization %}{{ blank.avg_utilization|floatformat:1 }}%{% else %}--{% endif %}
+                </div>
+                <div style="font-size: 11px; color: #666; margin-top: 3px;">
+                    {% if blank.volume %}体积: {{ blank.volume|floatformat:0 }} mm³{% endif %}
+                </div>
+            </div>
+            {% empty %}
+            <div class="loading">
+                <p>暂无粗胚文件</p>
+                <small>请上传粗胚文件开始使用</small>
+            </div>
+            {% endfor %}
+            
+            <div class="upload-blank" onclick="showUploadDialog('blank')">
+                <div style="color: #007bff; font-weight: bold;">
+                    ➕ 上传新粗胚
+                </div>
+                <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                    支持 .3dm, .MOD 格式
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 右侧鞋模列表区域 -->
+    <div class="shoe-area">
+        <!-- 工具栏 -->
+        <div class="shoe-toolbar">
+            <div class="search-box">
+                <input type="text" placeholder="🔍 搜索鞋模文件..." 
+                       value="{{ search_query }}" 
+                       onkeypress="handleSearch(event)"
+                       id="searchInput">
+            </div>
+            
+            <div class="stats-bar">
+                <div class="stat-item">
+                    <div class="stat-value">{{ stats.total_shoes }}</div>
+                    <div class="stat-label">鞋模总数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ stats.optimal_matches }}</div>
+                    <div class="stat-label">已匹配</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ stats.avg_utilization|floatformat:1 }}%</div>
+                    <div class="stat-label">平均利用率</div>
+                </div>
+            </div>
+            
+            <button class="btn-3d" onclick="showUploadDialog('shoe')">
+                📁 上传鞋模
+            </button>
+        </div>
+        
+        <!-- 鞋模列表 -->
+        <div class="shoe-list">
+            {% if shoes_with_matches %}
+            <table class="shoe-table">
+                <thead>
+                    <tr>
+                        <th>鞋模文件</th>
+                        <th>最佳粗胚</th>
+                        <th>材料利用率</th>
+                        <th>匹配状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in shoes_with_matches %}
+                    <tr>
+                        <td>
+                            <div class="shoe-name">{{ item.shoe.filename }}</div>
+                            <div style="font-size: 12px; color: #666;">
+                                {% if item.shoe.volume %}
+                                    体积: {{ item.shoe.volume|floatformat:0 }} mm³
+                                {% endif %}
+                                | {{ item.shoe.file_format|upper }}
+                                | {{ item.shoe.created_at|date:"m/d H:i" }}
+                            </div>
+                        </td>
+                        <td>
+                            {% if item.best_match %}
+                                <strong>{{ item.best_match.blank_model.filename }}</strong>
+                                <div style="font-size: 12px; color: #666;">
+                                    余量: {{ item.best_match.average_margin|floatformat:1 }}mm
+                                </div>
+                            {% else %}
+                                <span style="color: #999;">未匹配</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="utilization-bar">
+                                <div class="utilization-fill 
+                                    {% if item.utilization >= 85 %}utilization-high
+                                    {% elif item.utilization >= 70 %}utilization-medium
+                                    {% else %}utilization-low{% endif %}"
+                                    style="width: {{ item.utilization|default:0 }}%"></div>
+                            </div>
+                            <div style="font-size: 12px; margin-top: 3px;">
+                                {{ item.utilization|floatformat:1 }}%
+                            </div>
+                        </td>
+                        <td>
+                            <span class="shoe-status status-{{ item.status.class }}">
+                                {{ item.status.text }}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="action-buttons">
+                                <button class="btn-3d" 
+                                        onclick="open3DAnalysis({{ item.shoe.id }}, '{{ item.shoe.filename }}')">
+                                    🎮 3D分析
+                                </button>
+                                {% if item.best_match %}
+                                <button class="btn-apply"
+                                        onclick="applyMatch({{ item.shoe.id }}, {{ item.best_match.blank_model.id }})">
+                                    ✅ 应用
+                                </button>
+                                {% else %}
+                                <button class="btn-3d"
+                                        onclick="startMatching({{ item.shoe.id }})">
+                                    🔄 开始匹配
+                                </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>暂无鞋模文件</p>
+                <button class="btn-3d" onclick="showUploadDialog('shoe')">
+                    📁 立即上传鞋模文件
+                </button>
+            </div>
+            {% endif %}
+        </div>
+        
+        <!-- 分页 -->
+        {% if shoe_page.has_other_pages %}
+        <div class="pagination">
+            {% if shoe_page.has_previous %}
+                <a href="?page={{ shoe_page.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}">&laquo; 上一页</a>
+            {% endif %}
+            
+            {% for num in shoe_page.paginator.page_range %}
+                {% if shoe_page.number == num %}
+                    <span class="current">{{ num }}</span>
+                {% else %}
+                    <a href="?page={{ num }}{% if search_query %}&search={{ search_query }}{% endif %}">{{ num }}</a>
+                {% endif %}
+            {% endfor %}
+            
+            {% if shoe_page.has_next %}
+                <a href="?page={{ shoe_page.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}">下一页 &raquo;</a>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 文件上传模态框 -->
+<div id="uploadModal" class="modal fade" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">文件上传</h5>
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label>选择文件：</label>
+                        <input type="file" id="fileInput" name="files" multiple 
+                               accept=".3dm,.mod,.MOD" class="form-control">
+                        <small class="text-muted">支持 .3dm, .MOD 格式，最大100MB</small>
+                    </div>
+                    <input type="hidden" id="fileType" name="file_type">
+                </form>
+                <div id="uploadProgress" style="display: none;">
+                    <div class="progress">
+                        <div class="progress-bar" style="width: 0%"></div>
+                    </div>
+                    <p class="text-muted mt-2">正在上传...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="uploadFiles()">开始上传</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Bootstrap JS (如果需要模态框) -->
+<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+// 全局变量
+let selectedBlankId = null;
+let selectedBlankName = null;
+
+// 选择粗胚
+function selectBlank(blankId, blankName) {
+    // 移除之前的选择
+    document.querySelectorAll('.blank-item').forEach(item => {
+        item.classList.remove('selected');
+    });
+    
+    // 添加当前选择
+    document.querySelector(`[data-blank-id="${blankId}"]`).classList.add('selected');
+    
+    selectedBlankId = blankId;
+    selectedBlankName = blankName;
+    
+    console.log('选择粗胚:', blankName);
+}
+
+// 搜索功能
+function handleSearch(event) {
+    if (event.key === 'Enter') {
+        const query = event.target.value;
+        window.location.href = `?search=${encodeURIComponent(query)}`;
+    }
+}
+
+// 显示上传对话框
+function showUploadDialog(fileType) {
+    document.getElementById('fileType').value = fileType;
+    document.querySelector('#uploadModal .modal-title').textContent = 
+        fileType === 'shoe' ? '上传鞋模文件' : '上传粗胚文件';
+    $('#uploadModal').modal('show');
+}
+
+// 上传文件
+async function uploadFiles() {
+    const fileInput = document.getElementById('fileInput');
+    const fileType = document.getElementById('fileType').value;
+    const files = fileInput.files;
+    
+    if (files.length === 0) {
+        alert('请选择文件');
+        return;
+    }
+    
+    const formData = new FormData();
+    for (let file of files) {
+        formData.append('files', file);
+    }
+    formData.append('file_type', fileType);
+    
+    // 显示进度
+    document.getElementById('uploadProgress').style.display = 'block';
+    
+    try {
+        const response = await fetch('{% url "core:api_upload" %}', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(result.message);
+            location.reload(); // 刷新页面
+        } else {
+            alert('上传失败: ' + result.error);
+        }
+    } catch (error) {
+        alert('上传出错: ' + error.message);
+    } finally {
+        $('#uploadModal').modal('hide');
+        document.getElementById('uploadProgress').style.display = 'none';
+    }
+}
+
+// 打开3D分析
+function open3DAnalysis(shoeId, shoeName) {
+    window.open(`{% url "core:analysis_detail" 0 %}`.replace('0', shoeId), '_blank');
+}
+
+// 开始匹配
+async function startMatching(shoeId) {
+    if (!confirm('确定要开始匹配分析吗？这可能需要几分钟时间。')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`{% url "core:api_match" 0 %}`.replace('0', shoeId), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                margin_distance: 2.5,
+                force_recalculate: true
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('匹配分析完成！');
+            location.reload(); // 刷新页面显示结果
+        } else {
+            alert('匹配分析失败: ' + result.error);
+        }
+    } catch (error) {
+        alert('匹配分析出错: ' + error.message);
+    }
+}
+
+// 应用匹配方案
+function applyMatch(shoeId, blankId) {
+    if (confirm('确定要应用此匹配方案吗？')) {
+        // 这里可以调用应用方案的API
+        alert('匹配方案已应用！');
+    }
+}
+
+// 获取CSRF Token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// 页面加载完成后的初始化
+document.addEventListener('DOMContentLoaded', function() {
+    // 如果有粗胚，默认选择第一个
+    const firstBlank = document.querySelector('.blank-item[data-blank-id]');
+    if (firstBlank) {
+        const blankId = firstBlank.getAttribute('data-blank-id');
+        const blankName = firstBlank.querySelector('.blank-name strong').textContent;
+        selectBlank(blankId, blankName);
+    }
+});
+</script>
+{% endblock %}

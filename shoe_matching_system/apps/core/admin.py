@@ -115,7 +115,7 @@ class MatchingResultAdmin(admin.ModelAdmin):
             'fields': ('is_optimal', 'is_feasible')
         }),
         ('详细数据', {
-            'fields': ('analysis_data', 'computation_time'),
+            'fields': ('analysis_details', 'computation_time'),
             'classes': ('collapse',),
         }),
         ('时间信息', {

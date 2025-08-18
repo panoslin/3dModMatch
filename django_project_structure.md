@@ -160,7 +160,7 @@ class MatchingResult(models.Model):
     average_margin = models.DecimalField(max_digits=4, decimal_places=1)
     min_margin = models.DecimalField(max_digits=4, decimal_places=1)
     is_optimal = models.BooleanField(default=False)  # 是否为最优解
-    analysis_data = models.JSONField(default=dict)  # 详细分析数据
+    analysis_details = models.JSONField(default=dict)  # 详细分析数据
     created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:

@@ -1,717 +1,611 @@
 """
 3D鞋模匹配系统核心视图
+简化版一站式工作台设计
 """
 
-from django.shortcuts import render, get_object_or_404, redirect
-from django.views.generic import TemplateView, ListView, DetailView, FormView
-from django.http import JsonResponse
-from django.contrib import messages
-from django.db.models import Q, Avg, Count
-from django.utils.decorators import method_decorator
-from django.views.decorators.csrf import csrf_exempt
-from django.views import View
 import json
 import logging
+import os
+from typing import Dict, List, Any
+
+from django.shortcuts import render, redirect, get_object_or_404
+from django.http import JsonResponse, HttpResponse
+from django.views import View
+from django.views.generic import TemplateView
+from django.core.files.storage import default_storage
+from django.contrib import messages
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
+from django.core.paginator import Paginator
+from django.db.models import Q, Count, Avg
 
 from .models import ShoeModel, BlankModel, MatchingResult, ProcessingLog
-from .forms import FileUploadForm, AnalysisForm
+from apps.file_processing.parsers import ModelFileParser
+from apps.matching.algorithms import IntelligentMatcher
 
 logger = logging.getLogger(__name__)
 
 
-class HomeView(TemplateView):
-    """首页视图"""
-    template_name = 'core/home.html'
-    
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        
-        # 基础统计数据
-        context.update({
-            'shoe_models_count': ShoeModel.objects.count(),
-            'blank_models_count': BlankModel.objects.count(),
-            'total_matches': MatchingResult.objects.count(),
-            'recent_results': MatchingResult.objects.filter(
-                is_optimal=True
-            ).select_related('shoe_model', 'blank_model')[:5],
-        })
-        
-        return context
-
-
 class DashboardView(TemplateView):
-    """仪表盘视图"""
+    """一站式工作台视图"""
     template_name = 'core/dashboard.html'
     
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         
-        # 详细统计数据
+        # 获取所有粗胚（资源库）
+        blanks = BlankModel.objects.filter(is_processed=True).order_by('volume')
+        
+        # 获取鞋模列表（分页）
+        shoes = ShoeModel.objects.filter(is_processed=True).order_by('-created_at')
+        
+        # 搜索功能
+        search_query = ''
+        if hasattr(self, 'request') and self.request:
+            search_query = self.request.GET.get('search', '')
+            if search_query:
+                shoes = shoes.filter(
+                    Q(filename__icontains=search_query) |
+                    Q(id__icontains=search_query)
+                )
+        
+        # 分页
+        paginator = Paginator(shoes, 20)  # 每页20个
+        page_number = 1
+        if hasattr(self, 'request') and self.request:
+            page_number = self.request.GET.get('page', 1)
+        page_obj = paginator.get_page(page_number)
+        
+        # 为每个鞋模获取最佳匹配结果
+        for shoe in page_obj:
+            # 获取该鞋模的最优匹配
+            best_match = MatchingResult.objects.filter(
+                shoe_model=shoe,
+                is_optimal=True
+            ).select_related('blank_model').first()
+            
+            shoe.best_match = best_match
+            
+            # 如果没有匹配结果，标记为需要分析
+            if not best_match:
+                shoe.needs_analysis = True
+                shoe.match_status = 'pending'
+            else:
+                shoe.needs_analysis = False
+                shoe.match_status = 'completed'
+        
+        # 统计信息
         stats = {
-            'shoe_models': {
-                'total': ShoeModel.objects.count(),
-                'processed': ShoeModel.objects.filter(is_processed=True).count(),
-                'processing': ShoeModel.objects.filter(processing_status='processing').count(),
-            },
-            'blank_models': {
-                'total': BlankModel.objects.count(),
-                'processed': BlankModel.objects.filter(is_processed=True).count(),
-            },
-            'matching_results': {
-                'total': MatchingResult.objects.count(),
-                'optimal': MatchingResult.objects.filter(is_optimal=True).count(),
-                'avg_utilization': MatchingResult.objects.aggregate(
-                    avg=Avg('material_utilization')
-                )['avg'] or 0,
-            }
+            'total_shoes': ShoeModel.objects.count(),
+            'total_blanks': BlankModel.objects.count(),
+            'total_matches': MatchingResult.objects.filter(is_optimal=True).count(),
+            'avg_utilization': MatchingResult.objects.filter(
+                is_optimal=True
+            ).aggregate(avg=Avg('material_utilization'))['avg'] or 0
         }
         
-        # 最近的文件
-        recent_shoes = ShoeModel.objects.order_by('-created_at')[:10]
-        recent_blanks = BlankModel.objects.order_by('-created_at')[:10]
-        
-        # 最佳匹配结果
-        best_matches = MatchingResult.objects.filter(
-            is_optimal=True
-        ).select_related('shoe_model', 'blank_model').order_by(
-            '-material_utilization'
-        )[:10]
-        
         context.update({
+            'blanks': blanks,
+            'shoes': page_obj,
+            'search_query': search_query,
             'stats': stats,
-            'recent_shoes': recent_shoes,
-            'recent_blanks': recent_blanks,
-            'best_matches': best_matches,
+            'page_obj': page_obj,
         })
         
         return context
 
 
-class FileUploadView(FormView):
-    """文件上传视图"""
-    template_name = 'core/upload.html'
-    form_class = FileUploadForm
-    success_url = '/dashboard/'
+class FileUploadView(View):
+    """文件上传视图（支持Ajax）"""
     
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        
-        # 添加统计数据
-        from django.db.models import Avg
-        context['stats'] = {
-            'shoe_models': ShoeModel.objects.count(),
-            'blank_models': BlankModel.objects.count(), 
-            'total_matches': MatchingResult.objects.count(),
-            'avg_utilization': MatchingResult.objects.aggregate(
-                avg=Avg('material_utilization')
-            )['avg'] or 0,
-        }
-        
-        return context
+    @method_decorator(csrf_exempt)
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
     
-    def form_valid(self, form):
+    def post(self, request):
+        """处理文件上传"""
         try:
-            # 获取表单数据
-            shoe_files = self.request.FILES.getlist('shoe_files')
-            blank_files = self.request.FILES.getlist('blank_files')
-            margin_distance = form.cleaned_data.get('margin_distance', 2.5)
-            auto_process = form.cleaned_data.get('auto_process', True)
+            file_type = request.POST.get('type', 'shoe')  # shoe 或 blank
+            files = request.FILES.getlist('files')
             
-            uploaded_shoes = []
-            uploaded_blanks = []
+            if not files:
+                return JsonResponse({
+                    'success': False,
+                    'error': '没有选择文件'
+                })
             
-            # 处理鞋模文件
-            for file in shoe_files:
-                # 文件验证
-                if not self._validate_file(file):
-                    continue
-                    
-                shoe = ShoeModel.objects.create(
-                    filename=file.name,
-                    file=file,
-                    file_size=file.size,
-                    file_format=self._get_file_format(file.name),
-                    uploaded_by=self.request.user if self.request.user.is_authenticated else None
-                )
-                uploaded_shoes.append(shoe)
+            uploaded_files = []
+            
+            for file in files:
+                # 保存文件
+                file_name = file.name
+                file_path = f"{'shoes' if file_type == 'shoe' else 'blanks'}/{file_name}"
+                saved_path = default_storage.save(file_path, file)
                 
-                # 记录上传日志
-                ProcessingLog.objects.create(
-                    operation='upload',
-                    level='info',
-                    message=f'成功上传鞋模文件: {file.name} ({self._format_file_size(file.size)})',
-                    shoe_model=shoe
-                )
-            
-            # 处理粗胚文件
-            for file in blank_files:
-                # 文件验证
-                if not self._validate_file(file):
-                    continue
-                    
-                blank = BlankModel.objects.create(
-                    filename=file.name,
-                    file=file,
-                    file_size=file.size,
-                    file_format=self._get_file_format(file.name)
-                )
-                uploaded_blanks.append(blank)
+                # 解析文件
+                full_path = os.path.join(default_storage.location, saved_path)
+                parser = ModelFileParser(full_path)
+                parse_result = parser.parse()
                 
-                # 记录上传日志
-                ProcessingLog.objects.create(
-                    operation='upload',
-                    level='info',
-                    message=f'成功上传粗胚文件: {file.name} ({self._format_file_size(file.size)})',
-                    blank_model=blank
-                )
+                if parse_result.get('success'):
+                    # 创建模型记录
+                    if file_type == 'shoe':
+                        model = ShoeModel.objects.create(
+                            filename=file_name,
+                            file=saved_path,
+                            file_size=file.size,
+                            file_format='3dm' if file_name.lower().endswith('.3dm') else 'mod',
+                            volume=parse_result.get('volume'),
+                            bounding_box=parse_result.get('bounds', {}),
+                            key_features=parse_result,
+                            points_count=parse_result.get('points_count', 0),
+                            is_processed=True,
+                            processing_status='completed'
+                        )
+                        model_type = '鞋模'
+                    else:
+                        model = BlankModel.objects.create(
+                            filename=file_name,
+                            file=saved_path,
+                            file_size=file.size,
+                            file_format='3dm' if file_name.lower().endswith('.3dm') else 'mod',
+                            volume=parse_result.get('volume'),
+                            bounding_box=parse_result.get('bounds', {}),
+                            key_features=parse_result,
+                            points_count=parse_result.get('points_count', 0),
+                            is_processed=True,
+                            processing_status='completed'
+                        )
+                        model_type = '粗胚'
+                    
+                    uploaded_files.append({
+                        'id': model.id,
+                        'filename': file_name,
+                        'type': model_type,
+                        'volume': float(model.volume) if model.volume else 0,
+                        'status': 'success'
+                    })
+                    
+                    # 记录日志
+                    ProcessingLog.objects.create(
+                        operation='upload',
+                        level='info',
+                        message=f'成功上传{model_type}文件: {file_name}',
+                        shoe_model=model if file_type == 'shoe' else None,
+                        blank_model=model if file_type == 'blank' else None,
+                        extra_data=parse_result
+                    )
+                else:
+                    uploaded_files.append({
+                        'filename': file_name,
+                        'status': 'failed',
+                        'error': parse_result.get('error', '解析失败')
+                    })
             
-            # 触发文件处理
-            if auto_process and (uploaded_shoes or uploaded_blanks):
-                self._trigger_file_processing(uploaded_shoes, uploaded_blanks, margin_distance)
-            
-            messages.success(
-                self.request,
-                f'成功上传 {len(uploaded_shoes)} 个鞋模文件和 {len(uploaded_blanks)} 个粗胚文件！' +
-                ('系统正在后台处理中...' if auto_process else '请手动开始处理。')
-            )
-            
-            return super().form_valid(form)
+            return JsonResponse({
+                'success': True,
+                'files': uploaded_files,
+                'message': f'成功上传 {len([f for f in uploaded_files if f.get("status") == "success"])} 个文件'
+            })
             
         except Exception as e:
             logger.error(f"文件上传失败: {str(e)}")
-            messages.error(self.request, f'上传失败: {str(e)}')
-            return self.form_invalid(form)
-    
-    def _validate_file(self, file):
-        """验证文件"""
-        valid_extensions = ['.3dm', '.mod', '.MOD']
-        max_size = 100 * 1024 * 1024  # 100MB
-        
-        # 检查扩展名
-        extension = '.' + file.name.split('.')[-1]
-        if extension not in valid_extensions:
-            logger.warning(f"不支持的文件格式: {file.name}")
-            return False
-        
-        # 检查文件大小
-        if file.size > max_size:
-            logger.warning(f"文件过大: {file.name} ({self._format_file_size(file.size)})")
-            return False
-            
-        return True
-    
-    def _get_file_format(self, filename):
-        """获取文件格式"""
-        return '3dm' if filename.lower().endswith('.3dm') else 'mod'
-    
-    def _format_file_size(self, size):
-        """格式化文件大小"""
-        if size < 1024:
-            return f"{size} B"
-        elif size < 1024 * 1024:
-            return f"{size/1024:.1f} KB"
-        else:
-            return f"{size/(1024*1024):.1f} MB"
-    
-    def _trigger_file_processing(self, shoe_models, blank_models, margin_distance):
-        """触发文件处理"""
-        try:
-            # 注意：这里使用了简单的导入，实际项目中可能需要Celery等异步任务队列
-            from apps.file_processing.tasks import process_uploaded_files
-            process_uploaded_files.delay(
-                shoe_ids=[s.id for s in shoe_models],
-                blank_ids=[b.id for b in blank_models],
-                margin_distance=margin_distance
-            )
-        except ImportError:
-            # 如果没有Celery，可以同步处理或记录任务
-            logger.info("异步任务处理不可用，将文件标记为待处理")
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            })
 
 
-class FileListView(ListView):
-    """文件列表视图"""
-    template_name = 'core/file_list.html'
-    context_object_name = 'files'
-    paginate_by = 20
-    
-    def get_queryset(self):
-        file_type = self.request.GET.get('type', 'all')
-        search = self.request.GET.get('search', '')
-        
-        # 组合鞋模和粗胚文件
-        shoe_query = ShoeModel.objects.all()
-        blank_query = BlankModel.objects.all()
-        
-        if search:
-            shoe_query = shoe_query.filter(filename__icontains=search)
-            blank_query = blank_query.filter(filename__icontains=search)
-        
-        if file_type == 'shoes':
-            return shoe_query.order_by('-created_at')
-        elif file_type == 'blanks':
-            return blank_query.order_by('-created_at')
-        else:
-            # 合并查询结果
-            from itertools import chain
-            return sorted(
-                chain(shoe_query, blank_query),
-                key=lambda x: x.created_at,
-                reverse=True
-            )
-    
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        
-        # 添加统计数据
-        shoe_count = ShoeModel.objects.count()
-        blank_count = BlankModel.objects.count()
-        processed_count = (
-            ShoeModel.objects.filter(is_processed=True).count() +
-            BlankModel.objects.filter(is_processed=True).count()
-        )
-        processing_count = (
-            ShoeModel.objects.filter(processing_status='processing').count() +
-            BlankModel.objects.filter(processing_status='processing').count()
-        )
-        
-        context.update({
-            'current_type': self.request.GET.get('type', 'all'),
-            'search_query': self.request.GET.get('search', ''),
-            'shoe_count': shoe_count,
-            'blank_count': blank_count,
-            'processed_count': processed_count,
-            'processing_count': processing_count,
-        })
-        
-        return context
-
-
-class AnalysisView(TemplateView):
-    """分析页面视图"""
-    template_name = 'core/analysis.html'
-    
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        
-        # 获取可用的鞋模
-        available_shoes = ShoeModel.objects.filter(is_processed=True)
-        available_blanks = BlankModel.objects.filter(is_processed=True)
-        
-        context.update({
-            'available_shoes': available_shoes,
-            'available_blanks': available_blanks,
-            'form': AnalysisForm(),
-        })
-        
-        return context
-
-
-class AnalysisDetailView(DetailView):
-    """分析详情视图"""
-    model = ShoeModel
-    template_name = 'core/analysis_detail.html'
-    context_object_name = 'shoe_model'
-    pk_url_kwarg = 'shoe_id'
-    
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        shoe_model = self.get_object()
-        margin_distance = float(self.request.GET.get('margin', 2.5))
-        
-        # 获取匹配结果
-        matching_results = MatchingResult.objects.filter(
-            shoe_model=shoe_model,
-            margin_distance=margin_distance,
-            is_feasible=True
-        ).select_related('blank_model').order_by('-material_utilization')
-        
-        # 最优匹配
-        optimal_match = matching_results.filter(is_optimal=True).first()
-        
-        context.update({
-            'margin_distance': margin_distance,
-            'matching_results': matching_results[:10],  # 显示前10个结果
-            'optimal_match': optimal_match,
-            'available_blanks': BlankModel.objects.filter(is_processed=True).count(),
-        })
-        
-        return context
-
-
-class ResultsView(ListView):
-    """结果列表视图"""
-    model = MatchingResult
-    template_name = 'core/results.html'
-    context_object_name = 'results'
-    paginate_by = 20
-    
-    def get_queryset(self):
-        queryset = MatchingResult.objects.select_related(
-            'shoe_model', 'blank_model'
-        ).order_by('-created_at')
-        
-        # 筛选条件
-        show_optimal_only = self.request.GET.get('optimal', False)
-        if show_optimal_only:
-            queryset = queryset.filter(is_optimal=True)
-        
-        return queryset
-    
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['show_optimal_only'] = self.request.GET.get('optimal', False)
-        
-        # 统计信息
-        context['stats'] = {
-            'total_results': MatchingResult.objects.count(),
-            'optimal_results': MatchingResult.objects.filter(is_optimal=True).count(),
-            'avg_utilization': MatchingResult.objects.aggregate(
-                avg=Avg('material_utilization')
-            )['avg'] or 0,
-        }
-        
-        return context
-
-
-class ResultDetailView(DetailView):
-    """结果详情视图"""
-    model = MatchingResult
-    template_name = 'core/result_detail.html'
-    context_object_name = 'result'
-    
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        result = self.get_object()
-        
-        # 同一鞋模的其他匹配结果
-        alternative_results = MatchingResult.objects.filter(
-            shoe_model=result.shoe_model,
-            is_feasible=True
-        ).exclude(id=result.id).select_related('blank_model').order_by(
-            '-material_utilization'
-        )[:5]
-        
-        context.update({
-            'alternative_results': alternative_results,
-            'cost_savings': result.cost_savings,
-        })
-        
-        return context
-
-
-# AJAX API视图
-
-@method_decorator(csrf_exempt, name='dispatch')
-class StartMatchingView(View):
-    """开始匹配分析的AJAX视图"""
+class QuickMatchView(View):
+    """快速匹配视图（Ajax）"""
     
     def post(self, request):
+        """执行快速匹配分析"""
         try:
-            data = json.loads(request.body)
-            shoe_id = data.get('shoe_id')
-            margin_distance = float(data.get('margin', 2.5))
-            
-            if not shoe_id:
-                return JsonResponse({'success': False, 'error': '缺少鞋模ID'})
-            
-            shoe_model = get_object_or_404(ShoeModel, id=shoe_id)
-            
-            # 异步启动匹配任务
-            from apps.matching.tasks import perform_matching_analysis
-            task = perform_matching_analysis.delay(shoe_id, margin_distance)
-            
-            return JsonResponse({
-                'success': True,
-                'task_id': task.id,
-                'message': '匹配分析已开始，请稍候...'
-            })
-            
-        except Exception as e:
-            logger.error(f"启动匹配分析失败: {str(e)}")
-            return JsonResponse({'success': False, 'error': str(e)})
-
-
-class GetProgressView(View):
-    """获取进度的AJAX视图"""
-    
-    def get(self, request):
-        task_id = request.GET.get('task_id')
-        
-        if not task_id:
-            return JsonResponse({'success': False, 'error': '缺少任务ID'})
-        
-        try:
-            # 这里应该查询Celery任务状态
-            # 暂时返回模拟数据
-            return JsonResponse({
-                'success': True,
-                'status': 'completed',
-                'progress': 100,
-                'result_url': '/results/'
-            })
-            
-        except Exception as e:
-            return JsonResponse({'success': False, 'error': str(e)})
-
-
-@method_decorator(csrf_exempt, name='dispatch') 
-class DeleteFileView(View):
-    """删除文件的AJAX视图"""
-    
-    def post(self, request):
-        try:
-            data = json.loads(request.body)
-            file_id = data.get('file_id')
-            file_type = data.get('file_type')  # 'shoe' or 'blank'
-            
-            if file_type == 'shoe':
-                file_obj = get_object_or_404(ShoeModel, id=file_id)
-            else:
-                file_obj = get_object_or_404(BlankModel, id=file_id)
-            
-            # 删除文件和数据库记录
-            if file_obj.file:
-                file_obj.file.delete()
-            file_obj.delete()
-            
-            return JsonResponse({
-                'success': True,
-                'message': f'文件 {file_obj.filename} 已删除'
-            })
-            
-        except Exception as e:
-            logger.error(f"删除文件失败: {str(e)}")
-            return JsonResponse({'success': False, 'error': str(e)})
-
-
-class MatchingView(TemplateView):
-    """匹配功能主页面"""
-    template_name = 'core/matching.html'
-    
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        
-        # 获取可用的鞋模和粗胚
-        context['available_shoes'] = ShoeModel.objects.filter(is_processed=True)
-        context['available_blanks'] = BlankModel.objects.filter(is_processed=True)
-        
-        # 获取最近的匹配任务
-        try:
-            from apps.matching.models import MatchingTask
-            context['recent_tasks'] = MatchingTask.objects.order_by('-created_at')[:10]
-        except ImportError:
-            context['recent_tasks'] = []
-        
-        return context
-
-
-class MatchingResultsView(TemplateView):
-    """匹配结果展示页面"""
-    template_name = 'core/matching_results.html'
-    
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        task_id = kwargs.get('task_id')
-        
-        try:
-            from apps.matching.models import MatchingTask
-            # 获取匹配任务
-            task = get_object_or_404(MatchingTask, task_id=task_id)
-            context['task'] = task
-            
-            # 获取匹配结果
-            results = MatchingResult.objects.filter(
-                shoe_model=task.shoe_model
-            ).select_related('blank_model').order_by('-total_score')
-            
-            context['results'] = results
-            context['optimal_match'] = results.first() if results.exists() else None
-            context['shoe_model'] = task.shoe_model
-            context['margin_distance'] = task.margin_distance
-            context['processing_time'] = task.result_data.get('processing_time', 0)
-            
-        except ImportError:
-            context['task'] = None
-            context['results'] = []
-            context['optimal_match'] = None
-            context['shoe_model'] = None
-            context['margin_distance'] = 2.5
-            context['processing_time'] = 0
-        
-        return context
-
-
-class FilePreviewView(TemplateView):
-    """文件预览页面"""
-    template_name = 'core/file_preview.html'
-    
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        file_id = kwargs.get('pk')
-        
-        # 尝试获取鞋模或粗胚
-        try:
-            file_obj = ShoeModel.objects.get(id=file_id)
-            context['file_obj'] = file_obj
-            context['file_type'] = 'shoe'
-        except ShoeModel.DoesNotExist:
-            try:
-                file_obj = BlankModel.objects.get(id=file_id)
-                context['file_obj'] = file_obj
-                context['file_type'] = 'blank'
-            except BlankModel.DoesNotExist:
-                context['file_obj'] = None
-                context['file_type'] = None
-        
-        return context
-
-
-class File3DView(TemplateView):
-    """3D模型查看页面"""
-    template_name = 'core/file_3d.html'
-    
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        file_id = kwargs.get('pk')
-        
-        # 获取文件对象
-        try:
-            file_obj = ShoeModel.objects.get(id=file_id)
-            context['file_obj'] = file_obj
-            context['file_type'] = 'shoe'
-        except ShoeModel.DoesNotExist:
-            try:
-                file_obj = BlankModel.objects.get(id=file_id)
-                context['file_obj'] = file_obj
-                context['file_type'] = 'blank'
-            except BlankModel.DoesNotExist:
-                context['file_obj'] = None
-                context['file_type'] = None
-        
-        return context
-
-
-# API视图
-class FileUploadAPIView(View):
-    """文件上传API"""
-    
-    def post(self, request):
-        try:
-            form = FileUploadForm(request.POST, request.FILES)
-            if form.is_valid():
-                # 处理文件上传
-                return JsonResponse({'success': True, 'message': '文件上传成功'})
-            else:
-                return JsonResponse({'success': False, 'errors': form.errors})
-        except Exception as e:
-            return JsonResponse({'success': False, 'error': str(e)})
-
-
-class FileListAPIView(View):
-    """文件列表API"""
-    
-    def get(self, request):
-        try:
-            files = []
+            shoe_id = request.POST.get('shoe_id')
+            margin_distance = float(request.POST.get('margin_distance', 2.5))
             
             # 获取鞋模
-            shoes = ShoeModel.objects.all()
-            for shoe in shoes:
-                files.append({
-                    'id': shoe.id,
-                    'filename': shoe.filename,
-                    'file_type': 'shoe',
-                    'file_format': shoe.file_format,
-                    'file_size': shoe.file_size,
-                    'is_processed': shoe.is_processed,
-                    'uploaded_at': shoe.created_at.isoformat() if hasattr(shoe, 'created_at') else None
+            shoe = get_object_or_404(ShoeModel, id=shoe_id, is_processed=True)
+            
+            # 获取所有粗胚
+            blanks = BlankModel.objects.filter(is_processed=True)
+            
+            if not blanks.exists():
+                return JsonResponse({
+                    'success': False,
+                    'error': '没有可用的粗胚文件'
                 })
             
-            # 获取粗胚
-            blanks = BlankModel.objects.all()
-            for blank in blanks:
-                files.append({
-                    'id': blank.id,
-                    'filename': blank.filename,
-                    'file_type': 'blank',
-                    'file_format': blank.file_format,
-                    'file_size': blank.file_size,
-                    'is_processed': blank.is_processed,
-                    'uploaded_at': blank.created_at.isoformat() if hasattr(blank, 'created_at') else None
+            # 执行智能匹配
+            matcher = IntelligentMatcher(margin_distance=margin_distance)
+            results = matcher.find_optimal_match(shoe, list(blanks))
+            
+            if not results:
+                return JsonResponse({
+                    'success': False,
+                    'error': '未找到合适的匹配方案'
                 })
             
-            return JsonResponse({'success': True, 'files': files})
+            # 保存最优结果
+            best_result = results[0]
+            best_blank = BlankModel.objects.get(id=best_result.blank_id)
+            
+            # 更新或创建匹配结果
+            matching_result, created = MatchingResult.objects.update_or_create(
+                shoe_model=shoe,
+                blank_model=best_blank,
+                margin_distance=margin_distance,
+                defaults={
+                    'total_score': best_result.match_score * 100,
+                    'similarity_score': best_result.geometric_similarity * 100,
+                    'material_utilization': best_result.volume_efficiency * 100,
+                    'coverage_score': best_result.margin_coverage * 100,
+                    'average_margin': best_result.avg_margin,
+                    'min_margin': best_result.min_margin,
+                    'max_margin': best_result.max_margin,
+                    'is_optimal': True,
+                    'is_feasible': best_result.margin_coverage >= 0.95,
+                    'analysis_details': {
+                        'margin_variance': best_result.margin_variance,
+                        'processing_time': best_result.processing_time,
+                        'all_results': [
+                            {
+                                'blank_id': r.blank_id,
+                                'blank_name': r.blank_name,
+                                'score': r.match_score,
+                                'utilization': r.volume_efficiency
+                            } for r in results[:5]  # 保存前5个结果
+                        ]
+                    },
+                    'computation_time': best_result.processing_time
+                }
+            )
+            
+            # 标记其他结果为非最优
+            MatchingResult.objects.filter(
+                shoe_model=shoe
+            ).exclude(id=matching_result.id).update(is_optimal=False)
+            
+            # 记录日志
+            ProcessingLog.objects.create(
+                operation='match',
+                level='info',
+                message=f'完成匹配分析: {shoe.filename} → {best_blank.filename}',
+                shoe_model=shoe,
+                blank_model=best_blank,
+                extra_data={
+                    'margin_distance': margin_distance,
+                    'match_score': best_result.match_score,
+                    'created': created
+                }
+            )
+            
+            # 返回结果
+            return JsonResponse({
+                'success': True,
+                'result': {
+                    'id': matching_result.id,
+                    'blank_name': best_blank.filename,
+                    'material_utilization': float(matching_result.material_utilization),
+                    'average_margin': float(matching_result.average_margin),
+                    'min_margin': float(matching_result.min_margin),
+                    'total_score': float(matching_result.total_score),
+                    'is_feasible': matching_result.is_feasible,
+                    'alternatives': matching_result.analysis_details.get('all_results', [])
+                },
+                'message': '匹配分析完成'
+            })
             
         except Exception as e:
-            return JsonResponse({'success': False, 'error': str(e)})
+            logger.error(f"匹配分析失败: {str(e)}")
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            })
 
 
-class Model3DComparisonView(TemplateView):
-    """3D模型对比视图"""
-    template_name = 'core/3d_comparison.html'
+class MatchingDetailView(View):
+    """匹配详情视图（Ajax）"""
     
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
+    def get(self, request, matching_id):
+        """获取匹配详情数据"""
+        try:
+            matching = get_object_or_404(
+                MatchingResult,
+                id=matching_id
+            )
+            
+            # 准备3D可视化数据
+            shoe_features = matching.shoe_model.key_features or {}
+            blank_features = matching.blank_model.key_features or {}
+            
+            # 生成热力图数据（模拟）
+            heatmap_data = self._generate_heatmap_data(matching)
+            
+            # 生成截面数据（模拟）
+            cross_section_data = self._generate_cross_section_data(matching)
+            
+            return JsonResponse({
+                'success': True,
+                'data': {
+                    'matching': {
+                        'id': matching.id,
+                        'shoe_name': matching.shoe_model.filename,
+                        'blank_name': matching.blank_model.filename,
+                        'total_score': float(matching.total_score),
+                        'material_utilization': float(matching.material_utilization),
+                        'average_margin': float(matching.average_margin),
+                        'min_margin': float(matching.min_margin),
+                        'max_margin': float(matching.max_margin),
+                        'is_feasible': matching.is_feasible,
+                    },
+                    'shoe_model': {
+                        'id': matching.shoe_model.id,
+                        'filename': matching.shoe_model.filename,
+                        'volume': float(matching.shoe_model.volume) if matching.shoe_model.volume else 0,
+                        'bounds': matching.shoe_model.bounding_box,
+                        'points_count': matching.shoe_model.points_count,
+                    },
+                    'blank_model': {
+                        'id': matching.blank_model.id,
+                        'filename': matching.blank_model.filename,
+                        'volume': float(matching.blank_model.volume) if matching.blank_model.volume else 0,
+                        'bounds': matching.blank_model.bounding_box,
+                        'points_count': matching.blank_model.points_count,
+                    },
+                    'visualization': {
+                        'heatmap': heatmap_data,
+                        'cross_section': cross_section_data,
+                    },
+                    'alternatives': matching.analysis_details.get('all_results', [])
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"获取匹配详情失败: {str(e)}")
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            })
+    
+    def _generate_heatmap_data(self, matching: MatchingResult) -> Dict:
+        """生成热力图数据（示例）"""
+        import random
         
-        # 获取鞋模和粗胚ID
-        shoe_id = self.request.GET.get('shoe_id')
-        blank_id = self.request.GET.get('blank_id')
+        # 生成示例热力图数据
+        grid_size = 20
+        heatmap = []
         
-        if shoe_id and blank_id:
-            try:
-                shoe_model = ShoeModel.objects.get(id=shoe_id)
-                blank_model = BlankModel.objects.get(id=blank_id)
-                
-                context['shoe_model'] = shoe_model
-                context['blank_model'] = blank_model
-                
-                # 获取匹配结果数据
+        for i in range(grid_size):
+            row = []
+            for j in range(grid_size):
+                # 模拟余量分布
+                if i < 5 or i > 15 or j < 5 or j > 15:
+                    value = random.uniform(3.0, 5.0)  # 边缘余量充足
+                else:
+                    value = random.uniform(1.5, 3.0)  # 中心余量较小
+                    
+                row.append({
+                    'x': i,
+                    'y': j,
+                    'value': value,
+                    'color': '#27ae60' if value > 3 else '#f39c12' if value > 2 else '#e74c3c'
+                })
+            heatmap.append(row)
+        
+        return {
+            'grid': heatmap,
+            'min_value': matching.min_margin,
+            'max_value': matching.max_margin,
+            'avg_value': matching.average_margin
+        }
+    
+    def _generate_cross_section_data(self, matching: MatchingResult) -> Dict:
+        """生成截面数据（示例）"""
+        # 生成示例截面数据
+        sections = []
+        
+        for plane in ['xy', 'xz', 'yz']:
+            section = {
+                'plane': plane,
+                'position': 0.5,  # 中心位置
+                'shoe_contour': [],  # 鞋模轮廓点
+                'blank_contour': [],  # 粗胚轮廓点
+                'margin_points': []  # 余量点
+            }
+            
+            # 生成示例轮廓（简化为圆形）
+            import math
+            for angle in range(0, 360, 10):
+                rad = math.radians(angle)
+                # 鞋模轮廓
+                shoe_r = 50
+                section['shoe_contour'].append({
+                    'x': shoe_r * math.cos(rad),
+                    'y': shoe_r * math.sin(rad)
+                })
+                # 粗胚轮廓（稍大）
+                blank_r = 53
+                section['blank_contour'].append({
+                    'x': blank_r * math.cos(rad),
+                    'y': blank_r * math.sin(rad)
+                })
+                # 余量
+                section['margin_points'].append({
+                    'x': shoe_r * math.cos(rad),
+                    'y': shoe_r * math.sin(rad),
+                    'margin': blank_r - shoe_r
+                })
+            
+            sections.append(section)
+        
+        return {
+            'sections': sections,
+            'current_plane': 'xy',
+            'current_position': 0.5
+        }
+
+
+class BatchProcessView(View):
+    """批量处理视图"""
+    
+    def post(self, request):
+        """批量匹配处理"""
+        try:
+            shoe_ids = request.POST.getlist('shoe_ids[]')
+            margin_distance = float(request.POST.get('margin_distance', 2.5))
+            
+            if not shoe_ids:
+                return JsonResponse({
+                    'success': False,
+                    'error': '请选择要处理的鞋模'
+                })
+            
+            results = []
+            success_count = 0
+            
+            # 获取所有粗胚
+            blanks = list(BlankModel.objects.filter(is_processed=True))
+            
+            if not blanks:
+                return JsonResponse({
+                    'success': False,
+                    'error': '没有可用的粗胚文件'
+                })
+            
+            # 批量处理
+            matcher = IntelligentMatcher(margin_distance=margin_distance)
+            
+            for shoe_id in shoe_ids:
                 try:
-                    matching_result = MatchingResult.objects.filter(
-                        shoe_model=shoe_model,
-                        blank_model=blank_model
-                    ).first()  # 获取第一个匹配结果
+                    shoe = ShoeModel.objects.get(id=shoe_id, is_processed=True)
                     
-                    context.update({
-                        'match_score': matching_result.total_score,
-                        'material_utilization': matching_result.material_utilization,
-                        'coverage_score': matching_result.coverage_score,
-                        'average_margin': matching_result.average_margin,
-                        'min_margin': matching_result.min_margin,
-                        'cost_savings': matching_result.cost_savings,
-                    })
+                    # 执行匹配
+                    match_results = matcher.find_optimal_match(shoe, blanks)
                     
-                    # 计算匹配质量等级
-                    if matching_result.total_score >= 80:
-                        context['match_quality'] = 'excellent'
-                    elif matching_result.total_score >= 60:
-                        context['match_quality'] = 'good'
-                    elif matching_result.total_score >= 40:
-                        context['match_quality'] = 'fair'
-                    else:
-                        context['match_quality'] = 'poor'
+                    if match_results:
+                        best_result = match_results[0]
+                        best_blank = BlankModel.objects.get(id=best_result.blank_id)
                         
-                except MatchingResult.DoesNotExist:
-                    # 如果没有匹配结果，使用默认值
-                    context.update({
-                        'match_score': 0,
-                        'material_utilization': 0,
-                        'coverage_score': 0,
-                        'average_margin': 0,
-                        'min_margin': 0,
-                        'cost_savings': 0,
-                        'match_quality': 'poor'
+                        # 保存结果
+                        matching_result, _ = MatchingResult.objects.update_or_create(
+                            shoe_model=shoe,
+                            blank_model=best_blank,
+                            margin_distance=margin_distance,
+                            defaults={
+                                'total_score': best_result.match_score * 100,
+                                'material_utilization': best_result.volume_efficiency * 100,
+                                'average_margin': best_result.avg_margin,
+                                'min_margin': best_result.min_margin,
+                                'is_optimal': True,
+                                'is_feasible': best_result.margin_coverage >= 0.95,
+                            }
+                        )
+                        
+                        results.append({
+                            'shoe_id': shoe_id,
+                            'shoe_name': shoe.filename,
+                            'status': 'success',
+                            'blank_name': best_blank.filename,
+                            'utilization': float(matching_result.material_utilization)
+                        })
+                        success_count += 1
+                    else:
+                        results.append({
+                            'shoe_id': shoe_id,
+                            'shoe_name': shoe.filename,
+                            'status': 'no_match',
+                            'error': '未找到合适的匹配'
+                        })
+                        
+                except Exception as e:
+                    logger.error(f"处理鞋模 {shoe_id} 失败: {str(e)}")
+                    results.append({
+                        'shoe_id': shoe_id,
+                        'status': 'error',
+                        'error': str(e)
                     })
-                    
-            except (ShoeModel.DoesNotExist, BlankModel.DoesNotExist):
-                # 如果模型不存在，重定向到错误页面
-                from django.shortcuts import redirect
-                from django.contrib import messages
-                messages.error(self.request, '指定的模型不存在')
-                return redirect('core:matching')
-        else:
-            # 如果没有提供ID，重定向到匹配页面
-            from django.shortcuts import redirect
-            return redirect('core:matching')
-        
-        return context
+            
+            return JsonResponse({
+                'success': True,
+                'results': results,
+                'summary': {
+                    'total': len(shoe_ids),
+                    'success': success_count,
+                    'failed': len(shoe_ids) - success_count
+                },
+                'message': f'批量处理完成: {success_count}/{len(shoe_ids)} 成功'
+            })
+            
+        except Exception as e:
+            logger.error(f"批量处理失败: {str(e)}")
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            })
+
+
+class ExportResultView(View):
+    """导出结果视图"""
+    
+    def get(self, request, matching_id):
+        """导出匹配结果报告"""
+        try:
+            matching = get_object_or_404(MatchingResult, id=matching_id)
+            
+            # 生成CSV报告
+            import csv
+            response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+            response['Content-Disposition'] = f'attachment; filename="matching_report_{matching_id}.csv"'
+            
+            # 写入BOM以支持Excel打开中文
+            response.write('\ufeff')
+            
+            writer = csv.writer(response)
+            writer.writerow(['3D鞋模匹配分析报告'])
+            writer.writerow([])
+            writer.writerow(['基本信息'])
+            writer.writerow(['鞋模文件', matching.shoe_model.filename])
+            writer.writerow(['粗胚文件', matching.blank_model.filename])
+            writer.writerow(['匹配时间', matching.created_at.strftime('%Y-%m-%d %H:%M:%S')])
+            writer.writerow([])
+            writer.writerow(['匹配结果'])
+            writer.writerow(['总体评分', f'{matching.total_score:.2f}%'])
+            writer.writerow(['材料利用率', f'{matching.material_utilization:.2f}%'])
+            writer.writerow(['几何相似度', f'{matching.similarity_score:.2f}%'])
+            writer.writerow(['覆盖度评分', f'{matching.coverage_score:.2f}%'])
+            writer.writerow([])
+            writer.writerow(['余量分析'])
+            writer.writerow(['平均余量', f'{matching.average_margin:.2f}mm'])
+            writer.writerow(['最小余量', f'{matching.min_margin:.2f}mm'])
+            writer.writerow(['最大余量', f'{matching.max_margin:.2f}mm'])
+            writer.writerow(['余量要求', f'{matching.margin_distance:.2f}mm'])
+            writer.writerow([])
+            writer.writerow(['体积信息'])
+            writer.writerow(['鞋模体积', f'{matching.shoe_model.volume:.2f} mm³' if matching.shoe_model.volume else '未知'])
+            writer.writerow(['粗胚体积', f'{matching.blank_model.volume:.2f} mm³' if matching.blank_model.volume else '未知'])
+            
+            # 添加备选方案
+            alternatives = matching.analysis_details.get('all_results', [])
+            if alternatives:
+                writer.writerow([])
+                writer.writerow(['备选方案'])
+                writer.writerow(['排名', '粗胚名称', '匹配分数', '材料利用率'])
+                for i, alt in enumerate(alternatives[:5], 1):
+                    writer.writerow([
+                        i,
+                        alt.get('blank_name', ''),
+                        f"{alt.get('score', 0)*100:.2f}%",
+                        f"{alt.get('utilization', 0)*100:.2f}%"
+                    ])
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"导出失败: {str(e)}")
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            })
+

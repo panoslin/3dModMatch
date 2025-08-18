@@ -12,20 +12,12 @@ urlpatterns = [
     # 管理后台
     path('admin/', admin.site.urls),
     
-    # 核心应用
+    # 核心应用（主工作台）
     path('', include('apps.core.urls')),
+    path('core/', include('apps.core.urls')),  # 兼容/core/路径
     
-    # 文件处理API
-    path('api/files/', include('apps.file_processing.urls')),
-    
-    # 匹配算法API  
-    path('api/matching/', include('apps.matching.urls')),
-    
-    # API根路径
-    path('api/', include('rest_framework.urls')),
-    
-    # 根路径重定向到首页
-    path('', RedirectView.as_view(url='/', permanent=False)),
+    # API根路径（DRF）
+    path('api-auth/', include('rest_framework.urls')),
 ]
 
 # 静态文件和媒体文件服务

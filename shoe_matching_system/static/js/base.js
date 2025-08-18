@@ -1,293 +1,326 @@
 /**
- * 3D鞋模匹配系统 - 基础JavaScript
+ * 3D鞋模智能匹配工作台 - 基础JavaScript
  */
 
-(function($) {
-    'use strict';
-
-    // 页面加载完成后初始化
-    $(document).ready(function() {
-        initializeApp();
-    });
-
-    /**
-     * 初始化应用
-     */
-    function initializeApp() {
-        // 初始化工具提示
-        $('[data-toggle="tooltip"]').tooltip();
-        
-        // 初始化弹出框
-        $('[data-toggle="popover"]').popover();
-        
-        // 初始化文件上传
-        initializeFileUpload();
-        
-        // 初始化AJAX设置
-        setupAjax();
-        
-        // 自动隐藏消息提示
-        autoHideMessages();
-    }
-
-    /**
-     * 设置AJAX默认配置
-     */
-    function setupAjax() {
-        // 获取CSRF令牌
-        function getCookie(name) {
+// 全局工具函数
+window.ShoeMatching = {
+    // 获取CSRF Token
+    getCSRFToken: function() {
             let cookieValue = null;
             if (document.cookie && document.cookie !== '') {
                 const cookies = document.cookie.split(';');
                 for (let i = 0; i < cookies.length; i++) {
                     const cookie = cookies[i].trim();
-                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                if (cookie.substring(0, 10) === ('csrftoken' + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(10));
                         break;
                     }
                 }
             }
             return cookieValue;
-        }
+    },
 
-        // 设置AJAX请求头
-        $.ajaxSetup({
-            beforeSend: function(xhr, settings) {
-                if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type) && !this.crossDomain) {
-                    xhr.setRequestHeader("X-CSRFToken", getCookie('csrftoken'));
-                }
+    // AJAX请求封装
+    ajax: function(options) {
+        const defaults = {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': this.getCSRFToken()
             }
-        });
-    }
-
-    /**
-     * 初始化文件上传功能
-     */
-    function initializeFileUpload() {
-        // 拖拽上传
-        $('.upload-area').on('dragover', function(e) {
-            e.preventDefault();
-            $(this).addClass('dragover');
-        });
-
-        $('.upload-area').on('dragleave', function(e) {
-            e.preventDefault();
-            $(this).removeClass('dragover');
-        });
-
-        $('.upload-area').on('drop', function(e) {
-            e.preventDefault();
-            $(this).removeClass('dragover');
-            
-            const files = e.originalEvent.dataTransfer.files;
-            handleFileSelection(files, $(this));
-        });
-
-        // 点击上传
-        $('.upload-area').on('click', function() {
-            const fileInput = $(this).find('input[type="file"]');
-            if (fileInput.length) {
-                fileInput.click();
-            }
-        });
-
-        // 文件选择
-        $('input[type="file"]').on('change', function() {
-            const files = this.files;
-            handleFileSelection(files, $(this).closest('.upload-area'));
-        });
-    }
-
-    /**
-     * 处理文件选择
-     */
-    function handleFileSelection(files, container) {
-        if (!files || files.length === 0) return;
-
-        const fileList = container.find('.file-list');
-        if (fileList.length === 0) {
-            container.append('<div class="file-list mt-3"></div>');
-        }
-
-        Array.from(files).forEach(file => {
-            displaySelectedFile(file, container.find('.file-list'));
-        });
-    }
-
-    /**
-     * 显示选中的文件
-     */
-    function displaySelectedFile(file, container) {
-        const fileSize = formatFileSize(file.size);
-        const fileExtension = file.name.split('.').pop().toLowerCase();
+        };
         
-        let fileIcon = '📄';
-        if (fileExtension === '3dm') fileIcon = '🏗️';
-        else if (fileExtension === 'mod') fileIcon = '⚙️';
-
-        const fileElement = $(`
-            <div class="selected-file d-flex justify-content-between align-items-center py-2 px-3 mb-2 bg-light rounded">
-                <div>
-                    <span class="file-icon">${fileIcon}</span>
-                    <span class="file-name ml-2">${file.name}</span>
-                    <small class="text-muted ml-2">(${fileSize})</small>
-                </div>
-                <button type="button" class="btn btn-sm btn-outline-danger remove-file">
-                    ×
-                </button>
-            </div>
-        `);
-
-        fileElement.find('.remove-file').on('click', function() {
-            fileElement.remove();
+        const config = Object.assign({}, defaults, options);
+        
+        return fetch(config.url, {
+            method: config.method,
+            headers: config.headers,
+            body: config.body
+        }).then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
         });
+    },
 
-        container.append(fileElement);
-    }
+    // 显示加载状态
+    showLoading: function(message = '处理中...') {
+        const overlay = document.createElement('div');
+        overlay.id = 'loading-overlay';
+        overlay.className = 'loading-overlay';
+        overlay.innerHTML = `
+            <div class="loading-content">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="sr-only">Loading...</span>
+                </div>
+                <p class="mb-0">${message}</p>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+    },
 
-    /**
-     * 格式化文件大小
-     */
-    function formatFileSize(bytes) {
+    // 隐藏加载状态
+    hideLoading: function() {
+        const overlay = document.getElementById('loading-overlay');
+        if (overlay) {
+            overlay.remove();
+        }
+    },
+
+    // 显示消息提示
+    showMessage: function(message, type = 'info', duration = 5000) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        // 找到消息容器或创建一个
+        let container = document.querySelector('.message-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.className = 'message-container';
+            container.style.cssText = 'position: fixed; top: 80px; right: 20px; z-index: 1050; width: 300px;';
+            document.body.appendChild(container);
+        }
+        
+        container.appendChild(alertDiv);
+        
+        // 自动隐藏
+        if (duration > 0) {
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.remove();
+                }
+            }, duration);
+        }
+    },
+
+    // 格式化文件大小
+    formatFileSize: function(bytes) {
         if (bytes === 0) return '0 Bytes';
         const k = 1024;
         const sizes = ['Bytes', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
+    },
 
-    /**
-     * 自动隐藏消息提示
-     */
-    function autoHideMessages() {
-        setTimeout(function() {
-            $('.alert').fadeOut('slow');
-        }, 5000);
-    }
-
-    /**
-     * 显示加载状态
-     */
-    function showLoading(container, message) {
-        message = message || '加载中...';
-        const loadingHtml = `
-            <div class="loading-overlay">
-                <div class="text-center">
-                    <div class="spinner-border text-primary spinner-border-custom" role="status">
-                        <span class="sr-only">Loading...</span>
-                    </div>
-                    <div class="mt-2">${message}</div>
-                </div>
-            </div>
-        `;
-        container.append(loadingHtml);
-    }
-
-    /**
-     * 隐藏加载状态
-     */
-    function hideLoading(container) {
-        container.find('.loading-overlay').remove();
-    }
-
-    /**
-     * 显示进度条
-     */
-    function showProgress(container, progress) {
-        let progressBar = container.find('.progress');
-        if (progressBar.length === 0) {
-            progressBar = $(`
-                <div class="progress mt-3">
-                    <div class="progress-bar" role="progressbar" style="width: 0%" 
-                         aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
-                </div>
-            `);
-            container.append(progressBar);
-        }
-
-        const bar = progressBar.find('.progress-bar');
-        bar.css('width', progress + '%')
-           .attr('aria-valuenow', progress)
-           .text(progress + '%');
-    }
-
-    /**
-     * 显示错误消息
-     */
-    function showError(message, container) {
-        const alertHtml = `
-            <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                <strong>错误:</strong> ${message}
-                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-            </div>
-        `;
-        
-        if (container) {
-            container.prepend(alertHtml);
+    // 格式化时间
+    formatTime: function(seconds) {
+        if (seconds < 60) {
+            return `${seconds.toFixed(1)}秒`;
+        } else if (seconds < 3600) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = Math.floor(seconds % 60);
+            return `${minutes}分${remainingSeconds}秒`;
         } else {
-            $('.main-content').prepend(alertHtml);
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            return `${hours}小时${minutes}分钟`;
         }
-    }
+    },
 
-    /**
-     * 显示成功消息
-     */
-    function showSuccess(message, container) {
-        const alertHtml = `
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                <strong>成功:</strong> ${message}
-                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-            </div>
-        `;
-        
-        if (container) {
-            container.prepend(alertHtml);
-        } else {
-            $('.main-content').prepend(alertHtml);
-        }
-    }
+    // 防抖函数
+    debounce: function(func, wait, immediate) {
+        let timeout;
+        return function executedFunction() {
+            const context = this;
+            const args = arguments;
+            const later = function() {
+                timeout = null;
+                if (!immediate) func.apply(context, args);
+            };
+            const callNow = immediate && !timeout;
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+            if (callNow) func.apply(context, args);
+        };
+    },
 
-    /**
-     * API请求封装
-     */
-    function apiRequest(url, method, data, successCallback, errorCallback) {
-        $.ajax({
-            url: url,
-            method: method,
-            data: data,
-            dataType: 'json',
-            success: function(response) {
-                if (response.success) {
-                    if (successCallback) successCallback(response);
-                } else {
-                    const message = response.error || '请求失败';
-                    if (errorCallback) errorCallback(message);
-                    else showError(message);
-                }
-            },
-            error: function(xhr, status, error) {
-                const message = xhr.responseJSON && xhr.responseJSON.error 
-                    ? xhr.responseJSON.error 
-                    : '网络请求失败: ' + error;
-                if (errorCallback) errorCallback(message);
-                else showError(message);
+    // 节流函数
+    throttle: function(func, limit) {
+        let inThrottle;
+        return function() {
+            const args = arguments;
+            const context = this;
+            if (!inThrottle) {
+                func.apply(context, args);
+                inThrottle = true;
+                setTimeout(() => inThrottle = false, limit);
             }
+        }
+    },
+
+    // 验证文件类型
+    validateFileType: function(file, allowedTypes = ['.3dm', '.mod', '.MOD']) {
+        const fileName = file.name.toLowerCase();
+        const extension = '.' + fileName.split('.').pop();
+        return allowedTypes.some(type => fileName.endsWith(type.toLowerCase()));
+    },
+
+    // 验证文件大小
+    validateFileSize: function(file, maxSize = 100 * 1024 * 1024) {
+        return file.size <= maxSize;
+    },
+
+    // 生成唯一ID
+    generateId: function() {
+        return 'id_' + Math.random().toString(36).substr(2, 9);
+    },
+
+    // 深拷贝对象
+    deepClone: function(obj) {
+        if (obj === null || typeof obj !== "object") {
+            return obj;
+        }
+        if (obj instanceof Date) {
+            return new Date(obj.getTime());
+        }
+        if (obj instanceof Array) {
+            return obj.map(item => this.deepClone(item));
+        }
+        if (typeof obj === "object") {
+            const clonedObj = {};
+            for (const key in obj) {
+                if (obj.hasOwnProperty(key)) {
+                    clonedObj[key] = this.deepClone(obj[key]);
+                }
+            }
+            return clonedObj;
+        }
+    },
+
+    // 本地存储封装
+    storage: {
+        set: function(key, value) {
+            try {
+                localStorage.setItem(key, JSON.stringify(value));
+            } catch (e) {
+                console.error('localStorage设置失败:', e);
+            }
+        },
+        
+        get: function(key, defaultValue = null) {
+            try {
+                const item = localStorage.getItem(key);
+                return item ? JSON.parse(item) : defaultValue;
+            } catch (e) {
+                console.error('localStorage读取失败:', e);
+                return defaultValue;
+            }
+        },
+        
+        remove: function(key) {
+            try {
+                localStorage.removeItem(key);
+            } catch (e) {
+                console.error('localStorage删除失败:', e);
+            }
+        },
+        
+        clear: function() {
+            try {
+                localStorage.clear();
+            } catch (e) {
+                console.error('localStorage清空失败:', e);
+            }
+        }
+    }
+};
+
+// DOM加载完成后的初始化
+document.addEventListener('DOMContentLoaded', function() {
+    // 初始化所有提示信息
+    if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
         });
     }
+    
+    // 初始化所有弹出框
+    if (typeof bootstrap !== 'undefined' && bootstrap.Popover) {
+        const popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
+        popoverTriggerList.map(function (popoverTriggerEl) {
+            return new bootstrap.Popover(popoverTriggerEl);
+        });
+    }
+    
+    // 自动隐藏alert消息
+    setTimeout(() => {
+        const alerts = document.querySelectorAll('.alert:not(.alert-permanent)');
+        alerts.forEach(alert => {
+            if (alert.classList.contains('show')) {
+                const bsAlert = bootstrap.Alert.getOrCreateInstance(alert);
+                bsAlert.close();
+            }
+        });
+    }, 5000);
+    
+    // 为所有表单添加基础验证
+    const forms = document.querySelectorAll('form[data-validate="true"]');
+    forms.forEach(form => {
+        form.addEventListener('submit', function(e) {
+            if (!form.checkValidity()) {
+                e.preventDefault();
+                e.stopPropagation();
+                ShoeMatching.showMessage('请填写所有必填字段', 'warning');
+            }
+            form.classList.add('was-validated');
+        });
+    });
+    
+    // 为文件输入添加拖拽支持
+    const fileInputs = document.querySelectorAll('input[type="file"]');
+    fileInputs.forEach(input => {
+        const container = input.closest('.file-drop-zone') || input.parentElement;
+        if (container) {
+            container.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                container.classList.add('dragover');
+            });
+            
+            container.addEventListener('dragleave', function(e) {
+                e.preventDefault();
+                container.classList.remove('dragover');
+            });
+            
+            container.addEventListener('drop', function(e) {
+                e.preventDefault();
+                container.classList.remove('dragover');
+                
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    input.files = files;
+                    const event = new Event('change', { bubbles: true });
+                    input.dispatchEvent(event);
+                }
+            });
+        }
+    });
+});
 
-    // 暴露全局函数
-    window.ShoeMatchingSystem = {
-        showLoading: showLoading,
-        hideLoading: hideLoading,
-        showProgress: showProgress,
-        showError: showError,
-        showSuccess: showSuccess,
-        apiRequest: apiRequest,
-        formatFileSize: formatFileSize
-    };
+// 页面卸载前的清理
+window.addEventListener('beforeunload', function() {
+    ShoeMatching.hideLoading();
+});
 
-})(jQuery);
+// 错误处理
+window.addEventListener('error', function(e) {
+    console.error('全局错误:', e.error);
+    if (window.location.hostname !== 'localhost') {
+        // 生产环境下可以发送错误到服务器
+        // sendErrorToServer(e.error);
+    }
+});
+
+// 未处理的Promise拒绝
+window.addEventListener('unhandledrejection', function(e) {
+    console.error('未处理的Promise拒绝:', e.reason);
+    e.preventDefault();
+});
+
+// 导出给全局使用
+window.SM = window.ShoeMatching;

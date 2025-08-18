@@ -1,0 +1,57 @@
+{
+  "timestamp": "2025-08-17T18:02:31.623498",
+  "total_tests": 8,
+  "passed": 8,
+  "failed": 0,
+  "avg_response_time": 0.03380277752876282,
+  "details": [
+    {
+      "name": "页面加载时间 < 500ms",
+      "success": true,
+      "message": "加载时间: 0.051s < 500ms",
+      "elapsed": 0.05136299133300781
+    },
+    {
+      "name": "3D可视化功能",
+      "success": true,
+      "message": "所有3D功能元素存在",
+      "elapsed": 0.01754283905029297
+    },
+    {
+      "name": "文件处理功能",
+      "success": true,
+      "message": "支持格式: {'mod', '3dm'}",
+      "elapsed": 0.007169008255004883
+    },
+    {
+      "name": "智能匹配算法",
+      "success": true,
+      "message": "匹配分数: 67.71%",
+      "elapsed": 0.008434295654296875
+    },
+    {
+      "name": "用户界面完整性",
+      "success": true,
+      "message": "所有UI元素存在",
+      "elapsed": 0.018059968948364258
+    },
+    {
+      "name": "数据管理功能",
+      "success": true,
+      "message": "数据管理正常，文件数: 6",
+      "elapsed": 0.027634143829345703
+    },
+    {
+      "name": "系统兼容性",
+      "success": true,
+      "message": "所有端点正常",
+      "elapsed": 0.03906893730163574
+    },
+    {
+      "name": "性能要求",
+      "success": true,
+      "message": "平均响应: 0.039s, 成功率: 100.0%",
+      "elapsed": 0.1011500358581543
+    }
+  ]
+}

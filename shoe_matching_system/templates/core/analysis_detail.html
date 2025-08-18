@@ -1,0 +1,1070 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}3D智能分析 - {{ shoe_model.filename }}{% endblock %}
+
+{% block extra_css %}
+<style>
+/* 3D分析页面样式 */
+.analysis-workspace {
+    display: flex;
+    height: calc(100vh - 60px);
+    background: #1e1e1e;
+}
+
+/* 左侧粗胚选择器 */
+.blank-selector {
+    width: 280px;
+    background: #2c2c2c;
+    color: white;
+    border-right: 1px solid #444;
+    overflow-y: auto;
+}
+
+.blank-selector-header {
+    padding: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.blank-selector-header h4 {
+    margin: 0 0 5px 0;
+    font-size: 16px;
+}
+
+.blank-list {
+    padding: 10px;
+}
+
+.blank-option {
+    padding: 12px;
+    margin-bottom: 8px;
+    background: #3c3c3c;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.blank-option:hover {
+    background: #4c4c4c;
+    transform: translateX(5px);
+}
+
+.blank-option.active {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.blank-name {
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.blank-metrics {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 5px;
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+/* 中心3D查看器 */
+.viewer-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.viewer-toolbar {
+    background: #2c3e50;
+    color: white;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    border-bottom: 1px solid #34495e;
+}
+
+.tool-group {
+    display: flex;
+    gap: 8px;
+}
+
+.tool-btn {
+    background: #34495e;
+    border: none;
+    color: white;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.tool-btn:hover {
+    background: #4a6376;
+    transform: translateY(-2px);
+}
+
+.tool-btn.active {
+    background: #3498db;
+    box-shadow: 0 0 10px rgba(52, 152, 219, 0.5);
+}
+
+.viewer-container {
+    flex: 1;
+    position: relative;
+    background: linear-gradient(45deg, #2c3e50, #34495e);
+    overflow: hidden;
+}
+
+.viewer-3d {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 18px;
+    flex-direction: column;
+}
+
+.viewer-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+}
+
+.loading-spinner {
+    width: 50px;
+    height: 50px;
+    border: 4px solid #34495e;
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* 热力图图例 */
+.heatmap-legend {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 15px;
+    border-radius: 6px;
+    font-size: 12px;
+    backdrop-filter: blur(5px);
+}
+
+.legend-title {
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    margin: 5px 0;
+}
+
+.legend-color {
+    width: 20px;
+    height: 12px;
+    margin-right: 8px;
+    border-radius: 2px;
+}
+
+/* 截面控制器 */
+.cross-section-controls {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 15px;
+    border-radius: 6px;
+    backdrop-filter: blur(5px);
+    display: none;
+}
+
+.cross-section-controls.active {
+    display: block;
+}
+
+.control-group {
+    margin: 10px 0;
+}
+
+.control-group label {
+    display: block;
+    font-size: 12px;
+    margin-bottom: 5px;
+}
+
+.control-group input[type="range"] {
+    width: 150px;
+}
+
+/* 右侧分析面板 */
+.analysis-panel {
+    width: 350px;
+    background: white;
+    border-left: 1px solid #e1e8ed;
+    overflow-y: auto;
+}
+
+.panel-section {
+    padding: 20px;
+    border-bottom: 1px solid #e1e8ed;
+}
+
+.panel-section h5 {
+    margin: 0 0 15px 0;
+    color: #2c3e50;
+    font-size: 16px;
+}
+
+/* 匹配结果卡片 */
+.result-card {
+    background: linear-gradient(135deg, #f8f9ff 0%, #e8f4ff 100%);
+    border: 1px solid #d1ecf1;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+}
+
+.result-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.result-badge {
+    background: #28a745;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.metric-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.metric-item {
+    text-align: center;
+}
+
+.metric-value {
+    font-size: 18px;
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.metric-label {
+    font-size: 12px;
+    color: #7f8c8d;
+    margin-top: 3px;
+}
+
+.utilization-score {
+    color: #28a745;
+}
+
+.margin-warning {
+    color: #f39c12;
+}
+
+.margin-danger {
+    color: #e74c3c;
+}
+
+/* 参数调节 */
+.parameter-controls {
+    background: #f8f9fa;
+    border: 1px solid #e1e8ed;
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 15px;
+}
+
+.param-group {
+    margin: 15px 0;
+}
+
+.param-group label {
+    display: block;
+    font-size: 14px;
+    margin-bottom: 8px;
+    color: #2c3e50;
+}
+
+.param-range {
+    width: 100%;
+    margin: 5px 0;
+}
+
+.param-value {
+    font-weight: bold;
+    color: #3498db;
+}
+
+.param-group small {
+    color: #7f8c8d;
+    font-size: 12px;
+}
+
+/* 备选方案 */
+.alternatives {
+    margin-top: 20px;
+}
+
+.alternative-item {
+    background: #f8f9fa;
+    border: 1px solid #e1e8ed;
+    border-radius: 6px;
+    padding: 12px;
+    margin: 8px 0;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.alternative-item:hover {
+    background: #e8f4ff;
+    border-color: #3498db;
+    transform: translateY(-1px);
+}
+
+.alternative-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.alternative-metrics {
+    display: flex;
+    gap: 15px;
+    margin-top: 8px;
+    font-size: 12px;
+}
+
+/* 操作按钮 */
+.action-buttons {
+    padding: 20px;
+    background: #f8f9fa;
+    display: flex;
+    gap: 10px;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #3498db, #2980b9);
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+    flex: 1;
+    transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(52, 152, 219, 0.3);
+}
+
+.btn-secondary {
+    background: #95a5a6;
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-secondary:hover {
+    background: #7f8c8d;
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+    .blank-selector {
+        width: 240px;
+    }
+    
+    .analysis-panel {
+        width: 300px;
+    }
+}
+
+@media (max-width: 768px) {
+    .analysis-workspace {
+        flex-direction: column;
+        height: auto;
+    }
+    
+    .blank-selector {
+        width: 100%;
+        height: 120px;
+    }
+    
+    .blank-list {
+        display: flex;
+        gap: 10px;
+        overflow-x: auto;
+    }
+    
+    .blank-option {
+        min-width: 180px;
+    }
+    
+    .analysis-panel {
+        width: 100%;
+        height: auto;
+    }
+    
+    .viewer-area {
+        height: 400px;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="analysis-workspace">
+    <!-- 左侧粗胚选择器 -->
+    <div class="blank-selector">
+        <div class="blank-selector-header">
+            <h4>📦 选择粗胚</h4>
+            <div style="font-size: 12px; opacity: 0.9;">
+                共 {{ blank_models.count }} 个可选
+            </div>
+        </div>
+        
+        <div class="blank-list">
+            {% for blank in blank_models %}
+            <div class="blank-option {% if forloop.first %}active{% endif %}" 
+                 data-blank-id="{{ blank.id }}" 
+                 onclick="selectBlank({{ blank.id }}, '{{ blank.filename }}')">
+                <div class="blank-name">{{ blank.filename }}</div>
+                <div class="blank-metrics">
+                    <span>体积: {% if blank.volume %}{{ blank.volume|floatformat:0 }}{% else %}--{% endif %}</span>
+                    <span>
+                        {% if optimal_match and optimal_match.blank_model.id == blank.id %}
+                            🥇 最优
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+            {% empty %}
+            <div style="padding: 20px; text-align: center; color: #999;">
+                暂无可用粗胚
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    
+    <!-- 中心3D查看器 -->
+    <div class="viewer-area">
+        <!-- 工具栏 -->
+        <div class="viewer-toolbar">
+            <div class="tool-group">
+                <button class="tool-btn active" data-mode="rotate">
+                    🎮 旋转
+                </button>
+                <button class="tool-btn" data-mode="heatmap">
+                    🔥 热力图
+                </button>
+                <button class="tool-btn" data-mode="cross-section">
+                    📏 截面分析
+                </button>
+                <button class="tool-btn" data-mode="animation">
+                    🎬 动画演示
+                </button>
+            </div>
+            
+            <div style="margin-left: auto; display: flex; gap: 10px;">
+                <button class="tool-btn" onclick="resetView()">
+                    🔄 重置视角
+                </button>
+                <button class="tool-btn" onclick="captureScreenshot()">
+                    📷 截图
+                </button>
+                <button class="tool-btn" onclick="saveAnalysis()">
+                    💾 保存方案
+                </button>
+            </div>
+        </div>
+        
+        <!-- 3D查看器容器 -->
+        <div class="viewer-container" id="viewer-container">
+            <div class="viewer-3d">
+                <div class="viewer-loading">
+                    <div class="loading-spinner"></div>
+                    <div>
+                        <p>🎮 正在加载3D模型...</p>
+                        <small>首次加载可能需要几秒钟</small>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 热力图图例 -->
+            <div class="heatmap-legend" id="heatmap-legend" style="display: none;">
+                <div class="legend-title">余量热力图</div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #e74c3c;"></div>
+                    <span>不足 (&lt; 2mm)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #f39c12;"></div>
+                    <span>临界 (2-3mm)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #27ae60;"></div>
+                    <span>充足 (&gt; 3mm)</span>
+                </div>
+            </div>
+            
+            <!-- 截面控制器 -->
+            <div class="cross-section-controls" id="cross-section-controls">
+                <div class="control-group">
+                    <label>截面方向：</label>
+                    <select id="section-plane">
+                        <option value="xy">XY平面</option>
+                        <option value="xz">XZ平面</option>
+                        <option value="yz">YZ平面</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>位置：<span id="section-position">50%</span></label>
+                    <input type="range" id="section-slider" min="0" max="100" value="50">
+                </div>
+                <div class="control-group">
+                    <button class="tool-btn" onclick="animateCrossSection()">🎬 动画切片</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 右侧分析面板 -->
+    <div class="analysis-panel">
+        <!-- 鞋模信息 -->
+        <div class="panel-section">
+            <h5>👟 鞋模信息</h5>
+            <div>
+                <strong>{{ shoe_model.filename }}</strong>
+            </div>
+            <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                文件格式: {{ shoe_model.file_format|upper }} | 
+                {% if shoe_model.volume %}体积: {{ shoe_model.volume|floatformat:0 }} mm³{% endif %}
+            </div>
+        </div>
+        
+        <!-- 匹配结果 -->
+        {% if optimal_match %}
+        <div class="panel-section">
+            <h5>📊 最优匹配结果</h5>
+            <div class="result-card" id="current-result">
+                <div class="result-header">
+                    <span><strong id="current-blank-name">{{ optimal_match.blank_model.filename }}</strong></span>
+                    <span class="result-badge">🥇 最优</span>
+                </div>
+                
+                <div class="metric-grid">
+                    <div class="metric-item">
+                        <div class="metric-value utilization-score" id="utilization-value">
+                            {{ optimal_match.material_utilization|floatformat:1 }}%
+                        </div>
+                        <div class="metric-label">材料利用率</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-value" id="avg-margin-value">
+                            {{ optimal_match.average_margin|floatformat:1 }}mm
+                        </div>
+                        <div class="metric-label">平均余量</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-value {% if optimal_match.min_margin < 2 %}margin-danger{% elif optimal_match.min_margin < 3 %}margin-warning{% endif %}" 
+                             id="min-margin-value">
+                            {{ optimal_match.min_margin|floatformat:1 }}mm
+                        </div>
+                        <div class="metric-label">最小余量</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-value" id="similarity-value">
+                            {{ optimal_match.similarity_score|floatformat:1 }}%
+                        </div>
+                        <div class="metric-label">几何相似度</div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
+                    <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                        <span>风险等级:</span>
+                        <span id="risk-level" class="{% if optimal_match.min_margin >= 3 %}utilization-score{% elif optimal_match.min_margin >= 2 %}margin-warning{% else %}margin-danger{% endif %}">
+                            {% if optimal_match.min_margin >= 3 %}低风险 ✅{% elif optimal_match.min_margin >= 2 %}中风险 ⚠️{% else %}高风险 ❌{% endif %}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- 参数调节 -->
+        <div class="panel-section">
+            <h5>⚙️ 分析参数</h5>
+            <div class="parameter-controls">
+                <div class="param-group">
+                    <label>余量距离: <span class="param-value" id="margin-value">{{ margin_distance }}</span>mm</label>
+                    <input type="range" class="param-range" id="margin-slider" 
+                           min="0.5" max="10" step="0.1" value="{{ margin_distance }}">
+                    <small>调整安全余量距离要求</small>
+                </div>
+                
+                <div class="param-group">
+                    <label>几何权重: <span class="param-value">40%</span></label>
+                    <input type="range" class="param-range" min="0" max="100" value="40">
+                    <small>几何相似度在匹配中的权重</small>
+                </div>
+                
+                <div class="param-group">
+                    <label>效率权重: <span class="param-value">20%</span></label>
+                    <input type="range" class="param-range" min="0" max="100" value="20">
+                    <small>材料利用效率的权重</small>
+                </div>
+                
+                <button class="btn-primary" onclick="recalculateMatch()" style="width: 100%; margin-top: 10px;">
+                    🔄 重新计算
+                </button>
+            </div>
+        </div>
+        
+        <!-- 备选方案 -->
+        {% if matching_results %}
+        <div class="panel-section">
+            <h5>🔄 备选方案</h5>
+            <div class="alternatives">
+                {% for result in matching_results %}
+                {% if not result.is_optimal %}
+                <div class="alternative-item" onclick="selectAlternative({{ result.blank_model.id }})">
+                    <div class="alternative-header">
+                        <strong>{{ result.blank_model.filename }}</strong>
+                        <span style="font-size: 12px; color: #666;">
+                            {% if forloop.counter == 2 %}🥈{% elif forloop.counter == 3 %}🥉{% endif %}
+                        </span>
+                    </div>
+                    <div class="alternative-metrics">
+                        <span>利用率: {{ result.material_utilization|floatformat:1 }}%</span>
+                        <span>余量: {{ result.average_margin|floatformat:1 }}mm</span>
+                    </div>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- 操作按钮 -->
+        <div class="action-buttons">
+            <button class="btn-primary" onclick="applyCurrentMatch()">
+                ✅ 应用方案
+            </button>
+            <button class="btn-secondary" onclick="exportAnalysis()">
+                📊 导出数据
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Three.js 和相关3D库 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<script>
+// 全局变量
+let scene, camera, renderer, controls;
+let shoeModel, blankModel;
+let currentBlankId = {{ optimal_match.blank_model.id|default:"null" }};
+let currentMode = 'rotate';
+let heatmapData = [];
+
+// 初始化3D场景
+function init3DScene() {
+    const container = document.getElementById('viewer-container');
+    
+    // 场景
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x2c3e50);
+    
+    // 相机
+    camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+    camera.position.set(0, 0, 50);
+    
+    // 渲染器
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    
+    // 控制器
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    
+    // 灯光
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+    scene.add(ambientLight);
+    
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(50, 50, 50);
+    directionalLight.castShadow = true;
+    scene.add(directionalLight);
+    
+    // 替换加载界面
+    container.innerHTML = '';
+    container.appendChild(renderer.domElement);
+    
+    // 开始渲染循环
+    animate();
+    
+    // 加载初始模型
+    loadModels();
+}
+
+// 动画循环
+function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+}
+
+// 加载3D模型（模拟）
+function loadModels() {
+    // 模拟鞋模（红色立方体）
+    const shoeGeometry = new THREE.BoxGeometry(20, 10, 8);
+    const shoeMaterial = new THREE.MeshLambertMaterial({ 
+        color: 0xff6b6b, 
+        transparent: true, 
+        opacity: 0.8 
+    });
+    shoeModel = new THREE.Mesh(shoeGeometry, shoeMaterial);
+    shoeModel.position.set(0, 0, 0);
+    scene.add(shoeModel);
+    
+    // 模拟粗胚（蓝色立方体，稍大）
+    const blankGeometry = new THREE.BoxGeometry(25, 12, 10);
+    const blankMaterial = new THREE.MeshLambertMaterial({ 
+        color: 0x4ecdc4, 
+        wireframe: true 
+    });
+    blankModel = new THREE.Mesh(blankGeometry, blankMaterial);
+    blankModel.position.set(0, 0, 0);
+    scene.add(blankModel);
+}
+
+// 选择粗胚
+function selectBlank(blankId, blankName) {
+    // 更新UI
+    document.querySelectorAll('.blank-option').forEach(item => {
+        item.classList.remove('active');
+    });
+    document.querySelector(`[data-blank-id="${blankId}"]`).classList.add('active');
+    
+    currentBlankId = blankId;
+    document.getElementById('current-blank-name').textContent = blankName;
+    
+    // 更新3D模型
+    updateBlankModel(blankId);
+    
+    // 获取新的分析数据
+    loadAnalysisData({{ shoe_model.id }}, blankId);
+}
+
+// 更新粗胚模型
+function updateBlankModel(blankId) {
+    // 这里应该加载真实的3D模型数据
+    // 现在只是改变颜色作为演示
+    const colors = [0x4ecdc4, 0x45b7c8, 0x96ceb4, 0xffeaa7, 0xdda0dd];
+    const colorIndex = blankId % colors.length;
+    blankModel.material.color.setHex(colors[colorIndex]);
+}
+
+// 加载分析数据
+async function loadAnalysisData(shoeId, blankId) {
+    try {
+        const response = await fetch(`{% url "core:api_analysis" 0 0 %}`.replace('0/0', `${shoeId}/${blankId}/`));
+        const result = await response.json();
+        
+        if (result.success) {
+            updateAnalysisDisplay(result.analysis);
+        }
+    } catch (error) {
+        console.error('加载分析数据失败:', error);
+    }
+}
+
+// 更新分析显示
+function updateAnalysisDisplay(analysis) {
+    const match = analysis.match_analysis;
+    
+    // 更新指标
+    document.getElementById('utilization-value').textContent = match.material_utilization.toFixed(1) + '%';
+    document.getElementById('avg-margin-value').textContent = match.average_margin.toFixed(1) + 'mm';
+    document.getElementById('min-margin-value').textContent = match.min_margin.toFixed(1) + 'mm';
+    document.getElementById('similarity-value').textContent = match.similarity_score.toFixed(1) + '%';
+    
+    // 更新风险等级
+    const minMargin = match.min_margin;
+    const riskElement = document.getElementById('risk-level');
+    if (minMargin >= 3) {
+        riskElement.textContent = '低风险 ✅';
+        riskElement.className = 'utilization-score';
+    } else if (minMargin >= 2) {
+        riskElement.textContent = '中风险 ⚠️';
+        riskElement.className = 'margin-warning';
+    } else {
+        riskElement.textContent = '高风险 ❌';
+        riskElement.className = 'margin-danger';
+    }
+    
+    // 更新热力图数据
+    heatmapData = analysis.visualization_data.heatmap_data;
+}
+
+// 工具栏事件处理
+document.querySelectorAll('.tool-btn[data-mode]').forEach(btn => {
+    btn.addEventListener('click', function() {
+        // 移除所有active状态
+        document.querySelectorAll('.tool-btn[data-mode]').forEach(b => b.classList.remove('active'));
+        // 添加当前active状态
+        this.classList.add('active');
+        
+        const mode = this.getAttribute('data-mode');
+        switchViewMode(mode);
+    });
+});
+
+// 切换查看模式
+function switchViewMode(mode) {
+    currentMode = mode;
+    
+    // 隐藏所有控制面板
+    document.getElementById('heatmap-legend').style.display = 'none';
+    document.getElementById('cross-section-controls').style.display = 'none';
+    
+    switch (mode) {
+        case 'rotate':
+            // 基础旋转模式
+            blankModel.material.wireframe = true;
+            shoeModel.material.transparent = true;
+            shoeModel.material.opacity = 0.8;
+            break;
+            
+        case 'heatmap':
+            // 热力图模式
+            document.getElementById('heatmap-legend').style.display = 'block';
+            applyHeatmap();
+            break;
+            
+        case 'cross-section':
+            // 截面分析模式
+            document.getElementById('cross-section-controls').classList.add('active');
+            break;
+            
+        case 'animation':
+            // 动画演示模式
+            startMatchingAnimation();
+            break;
+    }
+}
+
+// 应用热力图
+function applyHeatmap() {
+    // 这里应该根据真实的热力图数据来着色
+    // 现在只是简单的演示
+    const geometry = shoeModel.geometry;
+    const colors = [];
+    
+    for (let i = 0; i < geometry.attributes.position.count; i++) {
+        // 模拟热力图颜色
+        const margin = Math.random() * 5; // 模拟余量值
+        if (margin < 2) {
+            colors.push(0.9, 0.3, 0.3); // 红色 - 不足
+        } else if (margin < 3) {
+            colors.push(0.9, 0.6, 0.1); // 橙色 - 临界
+        } else {
+            colors.push(0.2, 0.8, 0.4); // 绿色 - 充足
+        }
+    }
+    
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    shoeModel.material = new THREE.MeshLambertMaterial({ 
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.9
+    });
+}
+
+// 开始匹配动画
+function startMatchingAnimation() {
+    // 简单的装配动画
+    const originalPosition = blankModel.position.clone();
+    blankModel.position.set(50, 0, 0);
+    
+    // 动画移动到原位置
+    const animate = () => {
+        blankModel.position.lerp(originalPosition, 0.05);
+        if (blankModel.position.distanceTo(originalPosition) > 0.1) {
+            requestAnimationFrame(animate);
+        }
+    };
+    animate();
+}
+
+// 参数调节事件
+document.getElementById('margin-slider').addEventListener('input', function() {
+    const value = parseFloat(this.value);
+    document.getElementById('margin-value').textContent = value.toFixed(1);
+});
+
+// 截面控制事件
+document.getElementById('section-slider').addEventListener('input', function() {
+    const value = this.value;
+    document.getElementById('section-position').textContent = value + '%';
+    updateCrossSection(value);
+});
+
+// 更新截面
+function updateCrossSection(position) {
+    // 这里应该实现真正的截面功能
+    console.log('截面位置:', position + '%');
+}
+
+// 重新计算匹配
+async function recalculateMatch() {
+    const marginDistance = parseFloat(document.getElementById('margin-slider').value);
+    
+    try {
+        const response = await fetch(`{% url "core:api_match" shoe_model.id %}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                margin_distance: marginDistance,
+                force_recalculate: true
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // 更新显示
+            updateAnalysisDisplay({ match_analysis: result.result });
+            alert('重新计算完成！');
+        } else {
+            alert('计算失败: ' + result.error);
+        }
+    } catch (error) {
+        alert('计算出错: ' + error.message);
+    }
+}
+
+// 其他功能函数
+function resetView() {
+    camera.position.set(0, 0, 50);
+    controls.reset();
+}
+
+function captureScreenshot() {
+    const link = document.createElement('a');
+    link.download = '3d_analysis_screenshot.png';
+    link.href = renderer.domElement.toDataURL();
+    link.click();
+}
+
+function applyCurrentMatch() {
+    if (confirm('确定要应用当前匹配方案吗？')) {
+        alert('匹配方案已应用！');
+        // 这里可以调用API保存方案
+    }
+}
+
+function exportAnalysis() {
+    // 导出分析数据
+    const data = {
+        shoe: '{{ shoe_model.filename }}',
+        blank: document.getElementById('current-blank-name').textContent,
+        utilization: document.getElementById('utilization-value').textContent,
+        margin: document.getElementById('avg-margin-value').textContent,
+        timestamp: new Date().toISOString()
+    };
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.download = 'analysis_report.json';
+    link.href = URL.createObjectURL(blob);
+    link.click();
+}
+
+function saveAnalysis() {
+    alert('分析方案已保存！');
+}
+
+// 获取CSRF Token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// 页面加载完成后初始化
+document.addEventListener('DOMContentLoaded', function() {
+    // 初始化3D场景
+    setTimeout(() => {
+        init3DScene();
+    }, 500);
+    
+    // 窗口大小调整
+    window.addEventListener('resize', function() {
+        if (camera && renderer) {
+            const container = document.getElementById('viewer-container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+    });
+    
+    // 加载初始分析数据
+    {% if optimal_match %}
+    loadAnalysisData({{ shoe_model.id }}, {{ optimal_match.blank_model.id }});
+    {% endif %}
+});
+</script>
+{% endblock %}

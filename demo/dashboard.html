@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D鞋模智能匹配工作台</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Microsoft YaHei', sans-serif; background: #f5f7fa; }
+        .workspace { display: flex; height: 100vh; }
+        
+        /* 左侧粗胚库 */
+        .blank-library { width: 280px; background: white; border-right: 1px solid #e1e8ed; }
+        .blank-header { padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .blank-item { padding: 15px; border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background 0.2s; }
+        .blank-item:hover { background: #f8f9ff; }
+        .blank-score { font-size: 12px; color: #28a745; font-weight: bold; }
+        
+        /* 中心3D区域 */
+        .main-area { flex: 1; display: flex; flex-direction: column; }
+        .toolbar { background: #2c3e50; color: white; padding: 15px; display: flex; gap: 10px; }
+        .tool-btn { padding: 8px 16px; background: #34495e; border: none; color: white; border-radius: 4px; cursor: pointer; }
+        .tool-btn:hover { background: #4a6376; }
+        .tool-btn.active { background: #3498db; }
+        
+        .viewer-container { flex: 1; position: relative; background: #1e1e1e; }
+        .viewer-3d { width: 100%; height: 100%; background: linear-gradient(45deg, #2c3e50, #34495e); display: flex; align-items: center; justify-content: center; color: white; font-size: 18px; }
+        
+        /* 右侧控制面板 */
+        .control-panel { width: 350px; background: white; border-left: 1px solid #e1e8ed; overflow-y: auto; }
+        .panel-section { padding: 20px; border-bottom: 1px solid #f0f0f0; }
+        .shoe-selector select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+        .analysis-card { background: #f8f9ff; padding: 15px; border-radius: 8px; margin-top: 15px; }
+        .metric { display: flex; justify-content: space-between; margin: 8px 0; }
+        .metric-value { font-weight: bold; color: #2c3e50; }
+        .btn-primary { background: #3498db; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; width: 100%; margin-top: 10px; }
+        .btn-primary:hover { background: #2980b9; }
+        
+        /* 热力图图例 */
+        .heatmap-legend { position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.8); color: white; padding: 10px; border-radius: 4px; }
+        .legend-item { display: flex; align-items: center; margin: 5px 0; }
+        .legend-color { width: 20px; height: 15px; margin-right: 8px; border-radius: 2px; }
+    </style>
+</head>
+<body>
+    <div class="workspace">
+        <!-- 左侧粗胚库 -->
+        <div class="blank-library">
+            <div class="blank-header">
+                <h3>📁 粗胚资源库</h3>
+                <p style="font-size: 12px; opacity: 0.9;">共 10 个粗胚</p>
+            </div>
+            
+            <div class="blank-item" onclick="selectBlank('1177-38')">
+                <div><strong>1177槽-38.MOD</strong></div>
+                <div class="blank-score">🥇 利用率: 92.3%</div>
+                <div style="font-size: 11px; color: #666;">体积: 52,430 mm³</div>
+            </div>
+            
+            <div class="blank-item" onclick="selectBlank('B000')">
+                <div><strong>B000大.MOD</strong></div>
+                <div class="blank-score">🥈 利用率: 89.7%</div>
+                <div style="font-size: 11px; color: #666;">体积: 48,920 mm³</div>
+            </div>
+            
+            <div class="blank-item">
+                <div><strong>C003中.MOD</strong></div>
+                <div class="blank-score">🥉 利用率: 87.1%</div>
+                <div style="font-size: 11px; color: #666;">体积: 45,200 mm³</div>
+            </div>
+            
+            <div class="blank-item" style="border-top: 1px solid #eee; background: #f8f9fa;">
+                <div style="text-align: center; color: #007bff;">
+                    <strong>➕ 上传新粗胚</strong>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 中心3D区域 -->
+        <div class="main-area">
+            <!-- 工具栏 -->
+            <div class="toolbar">
+                <button class="tool-btn">🎮 旋转</button>
+                <button class="tool-btn active">🔥 热力图</button>
+                <button class="tool-btn">📏 截面分析</button>
+                <button class="tool-btn">🎬 动画演示</button>
+                <button class="tool-btn">📷 截图</button>
+                <button class="tool-btn">📊 数据图表</button>
+                
+                <div style="margin-left: auto;">
+                    <button class="tool-btn">💾 保存方案</button>
+                </div>
+            </div>
+            
+            <!-- 3D查看器 -->
+            <div class="viewer-container">
+                <div class="viewer-3d">
+                    🎮 3D模型加载中...<br>
+                    <small>支持: 热力图分析、截面切片、动画演示</small>
+                </div>
+                
+                <!-- 热力图图例 -->
+                <div class="heatmap-legend">
+                    <div><strong>余量热力图</strong></div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #e74c3c;"></div>
+                        <span>不足 (< 2mm)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #f39c12;"></div>
+                        <span>临界 (2-3mm)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #27ae60;"></div>
+                        <span>充足 (> 3mm)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 右侧控制面板 -->
+        <div class="control-panel">
+            <!-- 鞋模选择器 -->
+            <div class="panel-section">
+                <h4>👟 鞋模选择</h4>
+                <div class="shoe-selector">
+                    <select id="shoeSelect" onchange="loadShoeModel(this.value)">
+                        <option>选择鞋模文件...</option>
+                        <option value="shoe001">鞋模001.3dm</option>
+                        <option value="shoe002">鞋模002.3dm</option>
+                        <option value="shoe003">鞋模003.MOD</option>
+                    </select>
+                </div>
+                
+                <input type="text" placeholder="🔍 搜索鞋模..." style="width: 100%; padding: 8px; margin-top: 10px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+            
+            <!-- 智能分析结果 -->
+            <div class="panel-section">
+                <h4>📊 智能分析结果</h4>
+                <div class="analysis-card">
+                    <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                        <span>🥇</span>
+                        <strong style="margin-left: 8px;">最优方案</strong>
+                    </div>
+                    
+                    <div class="metric">
+                        <span>匹配粗胚:</span>
+                        <span class="metric-value">1177槽-38.MOD</span>
+                    </div>
+                    
+                    <div class="metric">
+                        <span>材料利用率:</span>
+                        <span class="metric-value" style="color: #27ae60;">92.3% ⭐⭐⭐⭐⭐</span>
+                    </div>
+                    
+                    <div class="metric">
+                        <span>平均余量:</span>
+                        <span class="metric-value" style="color: #27ae60;">3.2mm ✅</span>
+                    </div>
+                    
+                    <div class="metric">
+                        <span>最小余量:</span>
+                        <span class="metric-value" style="color: #f39c12;">1.8mm ⚠️</span>
+                    </div>
+                    
+                    <div class="metric">
+                        <span>风险等级:</span>
+                        <span class="metric-value" style="color: #27ae60;">低风险</span>
+                    </div>
+                </div>
+                
+                <button class="btn-primary">✅ 应用此方案</button>
+            </div>
+            
+            <!-- 参数调节 -->
+            <div class="panel-section">
+                <h4>⚙️ 匹配参数</h4>
+                
+                <div style="margin: 15px 0;">
+                    <label>余量距离: <span id="marginValue">2.5</span>mm</label>
+                    <input type="range" min="0.5" max="10" step="0.1" value="2.5" style="width: 100%;" oninput="updateMargin(this.value)">
+                </div>
+                
+                <div style="margin: 15px 0;">
+                    <label>几何权重: <span>40%</span></label>
+                    <input type="range" min="0" max="100" value="40" style="width: 100%;">
+                </div>
+                
+                <div style="margin: 15px 0;">
+                    <label>效率权重: <span>20%</span></label>
+                    <input type="range" min="0" max="100" value="20" style="width: 100%;">
+                </div>
+                
+                <button class="btn-primary" style="background: #e67e22;">🔄 重新计算</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function selectBlank(blankId) {
+            console.log('选择粗胚:', blankId);
+            // 更新3D显示和分析结果
+        }
+        
+        function loadShoeModel(shoeId) {
+            console.log('加载鞋模:', shoeId);
+            // 加载3D模型并计算匹配
+        }
+        
+        function updateMargin(value) {
+            document.getElementById('marginValue').textContent = value;
+        }
+    </script>
+</body>
+</html>
