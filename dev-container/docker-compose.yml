@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  cpp-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-}
+    container_name: shoe-matcher-dev
+    ports:
+      - "2222:2222"  # SSH port for VSCode remote
+      - "8888:8888"  # Jupyter notebook (optional)
+    volumes:
+      - ../:/workspace/project  # Mount the entire project
+      - cpp-cache:/home/dev/.cache  # Cache for build artifacts
+      - cpp-build:/workspace/build  # Build directory
+    environment:
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
+      - NO_PROXY=${NO_PROXY:-}
+      - DISPLAY=${DISPLAY:-}  # For GUI applications
+    networks:
+      - dev-network
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    # For GUI support (optional)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  cpp-cache:
+    driver: local
+  cpp-build:
+    driver: local
+
+networks:
+  dev-network:
+    driver: bridge

@@ -1,0 +1,17 @@
+# SSH configuration for VSCode Remote Development
+# This file should be placed in ~/.ssh/config on your host machine
+
+Host shoe-matcher-dev
+    HostName localhost
+    Port 2222
+    User dev
+    PasswordAuthentication yes
+    PreferredAuthentications password
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+    # For better performance
+    Compression yes
+    # Keep connection alive
+    TCPKeepAlive yes
