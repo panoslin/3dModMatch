@@ -1,200 +1,224 @@
-# C++ Development Container for Shoe Last Matcher
-
-This development container provides a complete C++ development environment for the Shoe Last Matcher project with all necessary dependencies and China mirrors for optimal performance.
+# Shoe Last Matcher - Docker Development Environment
 
 ## 🚀 Quick Start
 
-### 1. Start the Development Environment
-
+### 1. Build the Docker Image
 ```bash
-# Start the container
-./start_dev.sh
-
-# Or manually with docker-compose
-docker-compose up --build -d
+cd dev-container
+chmod +x build.sh run.sh
+./build.sh
 ```
 
-### 2. Connect via VSCode Remote SSH
-
-1. Install the "Remote - SSH" extension in VSCode
-2. Press `Ctrl+Shift+P` and select "Remote-SSH: Connect to Host"
-3. Select "shoe-matcher-dev" from the list
-4. Enter password: `devcontainer`
-
-### 3. Build and Test
-
+### 2. Start the Container
 ```bash
-# Build the project
-/workspace/project/dev-container/build_cpp.sh
-
-# Test the build
-/workspace/project/dev-container/test_build.sh
+./run.sh
 ```
 
-## 📦 Included Dependencies
+### 3. Connect to the Container
 
-### Core C++ Libraries
-- **Eigen3**: Linear algebra library
-- **nlohmann-json**: JSON parsing and generation
-- **Open3D**: 3D data processing and visualization
-- **OpenNURBS**: 3DM file format support
-
-### Build Tools
-- **GCC 11**: C++17 compiler
-- **CMake 3.16+**: Build system
-- **GDB**: Debugger
-- **Valgrind**: Memory debugging
-
-### Development Tools
-- **Git**: Version control
-- **Vim/Nano**: Text editors
-- **SSH Server**: Remote development
-- **Python 3**: For some dependencies
-
-## 🌏 China Mirrors
-
-The container is optimized for users in China with mirrors for:
-- **APT**: Aliyun mirrors for faster package installation
-- **Docker**: Uses China-optimized base images
-- **Python**: Tsinghua University PyPI mirror
-- **Git**: Optional Gitee mirror for GitHub repositories
-
-## 🔧 Configuration
-
-### Environment Variables
-
-You can set proxy environment variables:
-
+#### Option A: SSH Connection
 ```bash
-export HTTP_PROXY=http://localhost:7890
-export HTTPS_PROXY=http://localhost:7890
-export NO_PROXY=localhost,127.0.0.1
-
-./start_dev.sh
-```
-
-### SSH Configuration
-
-The container exposes SSH on port 2222. You can connect manually:
-
-```bash
-ssh dev@localhost -p 2222
+ssh -p 2222 dev@localhost
 # Password: devcontainer
 ```
 
-## 📁 Project Structure
+#### Option B: VSCode Remote-SSH
+1. Install "Remote - SSH" extension in VSCode
+2. Add SSH host: `ssh dev@localhost -p 2222`
+3. Connect and open `/workspace/project`
 
-```
-dev-container/
-├── Dockerfile              # Container definition
-├── docker-compose.yml      # Container orchestration
-├── ssh_config             # SSH configuration template
-├── setup_ssh.sh           # SSH setup script
-├── build_cpp.sh           # C++ build script
-├── test_build.sh          # Test script
-├── start_dev.sh           # Development startup script
-├── .vscode/               # VSCode configuration
-│   ├── settings.json      # Editor settings
-│   ├── launch.json        # Debug configurations
-│   └── tasks.json         # Build tasks
-└── README.md              # This file
+#### Option C: Direct Docker Exec
+```bash
+docker exec -it shoe-matcher-dev bash
 ```
 
-## 🛠️ Development Workflow
+## 📦 What's Included
 
-### 1. Build the Project
+### Core Components
+- **Ubuntu 22.04 LTS** base image
+- **Open3D 0.18.0** (built from source with Clang 12)
+- **Python 3.10** with scientific computing stack
+- **C++ Development**: GCC 11, Clang 12, CMake, Ninja
+- **Shoe Last Matcher**: Full project with C++ extensions
+
+### Python Packages
+- NumPy, SciPy, Matplotlib
+- Trimesh (3D mesh processing)
+- Rhino3dm (3DM file support)
+- Plotly (interactive visualization)
+- scikit-learn (machine learning)
+- Jupyter (notebooks)
+
+### Build Tools
+- CMake 3.22+
+- Ninja build system
+- scikit-build-core
+- pybind11
+
+## 🛠️ Building the C++ Extension
+
+Inside the container:
+```bash
+cd /workspace/project/hybrid
+pip3 install -v .
+
+# Test the build
+LD_PRELOAD=/usr/local/lib/libOpen3D.so python3 -c "import cppcore; print('Success!')"
+```
+
+Or use the convenience script:
+```bash
+/workspace/build_extension.sh
+```
+
+## 🎯 Running the Shoe Last Matcher
+
+### Basic Usage
+```bash
+cd /workspace/project
+LD_PRELOAD=/usr/local/lib/libOpen3D.so python3 hybrid/python/hybrid_matcher_optimized.py \
+  --target models/36小.3dm \
+  --candidates candidates/ \
+  --clearance 2.0 \
+  --export-report output/report.json
+```
+
+### With All Optimizations
+```bash
+LD_PRELOAD=/usr/local/lib/libOpen3D.so python3 hybrid/python/hybrid_matcher_optimized.py \
+  --target candidates/B004小.3dm \
+  --candidates candidates/ \
+  --clearance 2.0 \
+  --enable-scaling \
+  --enable-multi-start \
+  --threshold p15 \
+  --max-scale 1.03 \
+  --export-report output/optimized_report.json \
+  --export-ply-dir output/optimized_ply
+```
+
+## 📊 Testing the Environment
 
 ```bash
-# Inside the container
-cd /workspace/project/cpp_version
-mkdir -p build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
+# Run the test script
+/workspace/test_env.sh
+
+# Expected output:
+# ✓ NumPy 1.24.3
+# ✓ Trimesh 4.0.8
+# ✓ Open3D 0.18.0
+# ✓ All dependencies installed
 ```
 
-### 2. Run Tests
+## 🐳 Docker Commands
 
+### Build Options
 ```bash
-# Test with sample data
-./shoe_matcher --target ../models/36小.3dm --candidates ../candidates/ --clearance 2.0
+# Fresh build (remove cache)
+./build.sh --fresh --no-cache
 
-# Test single candidate
-./shoe_matcher --target ../models/36小.3dm --single-candidate ../candidates/B004大.3dm
+# Regular build with cache
+./build.sh
 ```
 
-### 3. Debug with VSCode
-
-1. Set breakpoints in your C++ code
-2. Press `F5` to start debugging
-3. Use the integrated debugger
-
-## 🔍 Troubleshooting
-
-### Container Issues
-
+### Run Options
 ```bash
-# Check container status
-docker-compose ps
+# Start detached (background)
+./run.sh
 
-# View logs
-docker-compose logs -f
+# Start with Jupyter notebook
+./run.sh --jupyter
 
-# Restart container
-docker-compose restart
+# Start attached (see output)
+./run.sh --attach
 
-# Rebuild container
-docker-compose up --build --force-recreate
+# Follow logs
+./run.sh --logs
 ```
-
-### Build Issues
-
-```bash
-# Clean build
-rm -rf /workspace/project/cpp_version/build/*
-/workspace/project/dev-container/build_cpp.sh
-
-# Check dependencies
-pkg-config --modversion eigen3
-pkg-config --modversion nlohmann_json
-```
-
-### SSH Connection Issues
-
-```bash
-# Test SSH connection
-ssh -v dev@localhost -p 2222
-
-# Check SSH service
-docker-compose exec cpp-dev service ssh status
-```
-
-## 📋 Available Commands
 
 ### Container Management
-- `./start_dev.sh` - Start development environment
-- `docker-compose down` - Stop container
-- `docker-compose logs -f` - View logs
+```bash
+# Stop container
+docker-compose down
 
-### Build Commands
-- `./build_cpp.sh` - Build the project
-- `./test_build.sh` - Test the build
-- `Ctrl+Shift+P` → "Tasks: Run Task" → "build-cpp" - VSCode build
+# View logs
+docker logs shoe-matcher-dev
 
-### Development
-- `ssh dev@localhost -p 2222` - SSH connection
-- VSCode Remote SSH - Full IDE experience
+# Remove all data
+docker-compose down -v
 
-## 🎯 Next Steps
+# Shell into running container
+docker exec -it shoe-matcher-dev bash
+```
 
-1. **Connect via VSCode**: Use Remote SSH to connect to the container
-2. **Build the project**: Run the build script or use VSCode tasks
-3. **Test functionality**: Run the test script with sample data
-4. **Start developing**: Modify the C++ code and test changes
+## 🔧 Troubleshooting
 
-## 📞 Support
+### Open3D Import Error
+```bash
+# Always use LD_PRELOAD when running Python scripts that use cppcore
+LD_PRELOAD=/usr/local/lib/libOpen3D.so python3 your_script.py
+```
 
-If you encounter any issues:
-1. Check the troubleshooting section above
-2. View container logs: `docker-compose logs -f`
-3. Verify all dependencies are installed: `/workspace/test_env.sh`
-4. Check the build output for specific error messages
+### Build Errors
+```bash
+# Clean build artifacts
+rm -rf /workspace/build/*
+cd /workspace/project/hybrid
+pip3 uninstall shoe-last-hybrid
+pip3 install -v .
+```
+
+### Permission Issues
+```bash
+# Fix ownership (run as root)
+sudo chown -R dev:dev /workspace/project
+```
+
+## 📁 Directory Structure
+
+```
+/workspace/project/
+├── hybrid/
+│   ├── cpp/           # C++ source files
+│   │   └── bindings.cpp
+│   ├── python/        # Python modules
+│   │   ├── hybrid_matcher.py
+│   │   ├── hybrid_matcher_enhanced.py
+│   │   ├── hybrid_matcher_production.py
+│   │   └── hybrid_matcher_optimized.py
+│   ├── CMakeLists.txt
+│   └── pyproject.toml
+├── models/            # Target shoe lasts
+├── candidates/        # Candidate blanks
+├── output/           # Results and exports
+└── dev-container/    # Docker configuration
+```
+
+## 🌐 Network Ports
+
+- **2222**: SSH server
+- **8888**: Jupyter notebook (main service)
+- **8889**: Jupyter notebook (optional service)
+- **8050**: Dash/Plotly web apps
+
+## 💡 Tips
+
+1. **Use tmux/screen** for long-running processes
+2. **Mount additional data** by modifying docker-compose.yml volumes
+3. **Adjust resource limits** in docker-compose.yml based on your system
+4. **Enable GUI support** by setting DISPLAY environment variable
+
+## 📝 Notes
+
+- The container runs as user `dev` (not root) for security
+- China mirrors are configured for faster package downloads
+- Open3D is compiled with Clang 12 for better compatibility
+- The LD_PRELOAD workaround is needed due to TLS issues with Open3D
+
+## 🤝 Contributing
+
+To modify the environment:
+1. Edit `Dockerfile` for system changes
+2. Edit `docker-compose.yml` for service configuration
+3. Rebuild with `./build.sh --fresh`
+4. Test changes thoroughly before committing

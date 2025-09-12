@@ -58,3 +58,4 @@ else
     echo "Error: Container failed to start. Check logs with: docker-compose logs"
     exit 1
 fi
+

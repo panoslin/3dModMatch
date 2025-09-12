@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  cpp-dev:
+  shoe-matcher:
     build:
       context: .
       dockerfile: Dockerfile
@@ -10,33 +10,96 @@ services:
         HTTPS_PROXY: ${HTTPS_PROXY:-}
         NO_PROXY: ${NO_PROXY:-}
     container_name: shoe-matcher-dev
+    hostname: shoe-matcher
     ports:
       - "2222:2222"  # SSH port for VSCode remote
-      - "8888:8888"  # Jupyter notebook (optional)
+      - "8888:8888"  # Jupyter notebook
+      - "8050:8050"  # Dash/Plotly apps
     volumes:
-      - ../:/workspace/project  # Mount the entire project
-      - cpp-cache:/home/dev/.cache  # Cache for build artifacts
-      - cpp-build:/workspace/build  # Build directory
+      # Main project directory
+      - ../:/workspace/project
+      # Separate volumes for build artifacts and cache
+      - build-cache:/workspace/build
+      - pip-cache:/home/dev/.cache/pip
+      - cmake-cache:/home/dev/.cmake
+      # Optional: Share models between runs
+      - models-data:/workspace/project/models:ro
+      - candidates-data:/workspace/project/candidates:ro
     environment:
+      # Proxy settings
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
       - NO_PROXY=${NO_PROXY:-}
-      - DISPLAY=${DISPLAY:-}  # For GUI applications
+      # Display for GUI applications (optional)
+      - DISPLAY=${DISPLAY:-}
+      # Open3D library path
+      - LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH:-}
+      # Python settings
+      - PYTHONPATH=/workspace/project/hybrid/python:${PYTHONPATH:-}
+      # OpenMP settings for parallel processing
+      - OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
     networks:
-      - dev-network
+      - shoe-matcher-network
     restart: unless-stopped
     stdin_open: true
     tty: true
+    # Resource limits (optional, adjust based on your system)
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+    # Health check
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import open3d; import cppcore"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     # For GUI support (optional)
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  # Optional: Jupyter notebook service
+  jupyter:
+    image: shoe-matcher:latest
+    container_name: shoe-matcher-jupyter
+    command: jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password=''
+    ports:
+      - "8889:8888"
+    volumes:
+      - ../:/workspace/project
+      - jupyter-data:/home/dev/.jupyter
+    environment:
+      - LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH:-}
+      - PYTHONPATH=/workspace/project/hybrid/python:${PYTHONPATH:-}
+    networks:
+      - shoe-matcher-network
+    depends_on:
+      - shoe-matcher
+    profiles:
+      - jupyter
+
 volumes:
-  cpp-cache:
+  build-cache:
     driver: local
-  cpp-build:
+  pip-cache:
+    driver: local
+  cmake-cache:
+    driver: local
+  models-data:
+    driver: local
+  candidates-data:
+    driver: local
+  jupyter-data:
     driver: local
 
 networks:
-  dev-network:
+  shoe-matcher-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16

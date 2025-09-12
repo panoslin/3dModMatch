@@ -58,3 +58,4 @@ if [ -f "simple_test" ]; then
 fi
 
 echo "=== Test Complete ==="
+

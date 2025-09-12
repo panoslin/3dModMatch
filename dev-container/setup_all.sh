@@ -74,3 +74,4 @@ echo "   - Run: /workspace/project/dev-container/build_cpp.sh"
 echo "   - Run: /workspace/project/dev-container/test_build.sh"
 echo ""
 echo "=== Ready for Development ==="
+

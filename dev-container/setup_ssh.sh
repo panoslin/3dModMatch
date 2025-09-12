@@ -34,3 +34,4 @@ echo "3. Select 'shoe-matcher-dev' from the list"
 echo "4. Enter password: devcontainer"
 echo ""
 echo "=== Setup Complete ==="
+

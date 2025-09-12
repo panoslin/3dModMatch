@@ -18,9 +18,9 @@ if [ ! -f "/workspace/test_env.sh" ]; then
     exit 1
 fi
 
-echo "Step 1: Download OpenNURBS from official website"
-echo "Please visit: https://www.rhino3d.com/opennurbs/"
-echo "Download the latest version (currently 8.0)"
+echo "Step 1: Download OpenNURBS from GitHub"
+echo "Source: https://github.com/mcneel/opennurbs/releases/tag/v8.21.25188.17001"
+echo "Download the latest version (currently v8.21.25188.17001)"
 echo ""
 
 # Create a temporary directory for the download
