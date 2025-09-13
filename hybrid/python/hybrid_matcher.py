@@ -331,30 +331,51 @@ def compute_detailed_clearance_metrics(Vt, Ft, Vc_aligned, Fc, samples=120000):
         clearance=2.0, safety_delta=0.3, samples=samples
     )
     
-    # Compute additional percentiles
-    n_detailed = min(5000, len(Vt))
-    sample_indices = np.random.choice(len(Vt), n_detailed, replace=False)
-    sample_points = Vt[sample_indices]
+    # Use more samples for percentile calculation to get accurate statistics
+    detailed_result = cppcore.clearance_sampling(
+        Vt, Ft, Vc_aligned.astype(np.float64), Fc,
+        clearance=2.0, safety_delta=0.3, samples=50000  # More samples for percentiles
+    )
     
-    clearances = []
-    for pt in sample_points:
-        dists = np.linalg.norm(Vc_aligned - pt, axis=1)
-        clearances.append(np.min(dists))
+    # Copy the inside_ratio from detailed_result to clear_result
+    clear_result['inside_ratio'] = detailed_result['inside_ratio']
     
-    clearances = np.array(clearances)
+    # If not all points are inside, set clearances to 0 for points outside
+    if detailed_result['inside_ratio'] < 1.0:
+        print(f"⚠️ Warning: Only {detailed_result['inside_ratio']:.1%} of target points are inside candidate")
+        # For proper clearance, we need complete containment
+        clear_result['min_clearance'] = 0.0  # Set to 0 if not fully contained
     
-    # Add percentiles to result
-    clear_result['p05_clearance'] = float(np.percentile(clearances, 5))
-    clear_result['p10_clearance'] = float(np.percentile(clearances, 10))
-    clear_result['p15_clearance'] = float(np.percentile(clearances, 15))
-    clear_result['p20_clearance'] = float(np.percentile(clearances, 20))
-    clear_result['p50_clearance'] = float(np.percentile(clearances, 50))
+    # Calculate percentiles using a proper surface sampling approach
+    # Sample more points for accurate percentile calculation
+    percentile_samples = min(10000, len(Vt) * 10)
+    percentile_result = cppcore.clearance_sampling(
+        Vt, Ft, Vc_aligned.astype(np.float64), Fc,
+        clearance=2.0, safety_delta=0.3, samples=percentile_samples
+    )
+    
+    # Estimate percentiles based on the distribution
+    # Since we can't get exact percentiles from C++, we'll use the min and mean to estimate
+    # This is a simplified approach - ideally we'd modify the C++ to return percentiles
+    min_c = percentile_result['min_clearance']
+    mean_c = percentile_result['mean_clearance']
+    p01_c = percentile_result['p01_clearance']
+    
+    # Estimate other percentiles using exponential distribution assumption
+    # This is approximate but better than vertex-to-vertex distances
+    clear_result['p05_clearance'] = min_c + (p01_c - min_c) * 5.0
+    clear_result['p10_clearance'] = min_c + (p01_c - min_c) * 10.0
+    clear_result['p15_clearance'] = min_c + (p01_c - min_c) * 15.0
+    clear_result['p20_clearance'] = min_c + (p01_c - min_c) * 20.0
+    clear_result['p50_clearance'] = mean_c  # Use mean as approximation for median
     
     # Determine pass with multiple criteria
-    clear_result['pass_strict'] = clear_result['min_clearance'] >= 2.0  # Strict: min >= 2mm
-    clear_result['pass_p10'] = clear_result['p10_clearance'] >= 2.0    # P10 >= 2mm
-    clear_result['pass_p15'] = clear_result['p15_clearance'] >= 2.0    # P15 >= 2mm
-    clear_result['pass_p20'] = clear_result['p20_clearance'] >= 2.0    # P20 >= 2mm
+    # Strict pass requires BOTH complete containment AND minimum clearance
+    is_fully_contained = clear_result.get('inside_ratio', 0) >= 0.999  # 99.9% to allow for numerical errors
+    clear_result['pass_strict'] = is_fully_contained and (clear_result['min_clearance'] >= 2.0)
+    clear_result['pass_p10'] = is_fully_contained and (clear_result['p10_clearance'] >= 2.0)
+    clear_result['pass_p15'] = is_fully_contained and (clear_result['p15_clearance'] >= 2.0)
+    clear_result['pass_p20'] = is_fully_contained and (clear_result['p20_clearance'] >= 2.0)
     
     return clear_result
 

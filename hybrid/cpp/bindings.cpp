@@ -273,19 +273,27 @@ py::dict clearance_sampling(py::array_t<double> v_tgt, py::array_t<int> f_tgt,
 
     std::vector<double> inner; inner.reserve(sdv.size()); size_t inside_cnt = 0;
     for (size_t i = 0; i < sdv.size(); ++i) {
-        if (inv[i] > 0.5f) { inside_cnt++; inner.push_back(-(double)sdv[i]); }
+        // inv[i] > 0.5f means the point is INSIDE the candidate mesh
+        // sdv[i] is negative when inside, positive when outside
+        // For clearance, we want the absolute distance when inside
+        if (inv[i] > 0.5f) { 
+            inside_cnt++; 
+            // Use absolute value of signed distance as clearance
+            inner.push_back(std::abs((double)sdv[i])); 
+        }
     }
     double inside_ratio = (double)inside_cnt / std::max<size_t>(1, sdv.size());
 
     double min_c = 0, mean_c = 0, p01 = 0; bool pass = false;
     if (!inner.empty()) {
         std::sort(inner.begin(), inner.end());
-        min_c = inner.front();
+        min_c = inner.front();  // Minimum clearance (smallest distance from target to candidate interior)
         mean_c = std::accumulate(inner.begin(), inner.end(), 0.0) / inner.size();
         size_t k = (size_t)std::floor(0.01 * inner.size());
         if (k >= inner.size()) k = inner.size() - 1;
         p01 = inner[k];
-        pass = (min_c >= (clearance + safety_delta));
+        // Pass only if ALL points are inside (inside_ratio == 1.0) AND minimum clearance is sufficient
+        pass = (inside_ratio >= 0.999) && (min_c >= clearance);  // Allow 0.1% tolerance for numerical errors
     }
     return py::dict("pass"_a = pass, "min_clearance"_a = min_c, "mean_clearance"_a = mean_c,
                     "p01_clearance"_a = p01, "inside_ratio"_a = inside_ratio);

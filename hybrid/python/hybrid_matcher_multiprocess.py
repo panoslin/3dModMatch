@@ -154,6 +154,7 @@ def process_single_candidate(args):
                 'p20_clearance': float(best_result['clearance']['p20_clearance']),
                 'p50_clearance': float(best_result['clearance']['p50_clearance']),
                 'mean_clearance': float(best_result['clearance']['mean_clearance']),
+                'inside_ratio': float(best_result['clearance'].get('inside_ratio', 0.0)),
                 'pass_strict': best_result['clearance']['pass_strict'],
                 'pass_p10': best_result['clearance']['pass_p10'],
                 'pass_p15': best_result['clearance']['pass_p15'],
