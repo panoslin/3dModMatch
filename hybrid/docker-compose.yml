@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  hybrid-matcher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hybrid-shoe-matcher
+    hostname: hybrid-matcher
+    volumes:
+      # Mount models and candidates
+      - ./models:/app/models:ro
+      - ./candidates:/app/candidates:ro
+      - ./output:/app/output
+      # Optional: Mount custom data
+      - models-data:/app/models:ro
+      - candidates-data:/app/candidates:ro
+    environment:
+      # Open3D library path
+      - LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH:-}
+      - LD_PRELOAD=/usr/local/lib/libOpen3D.so
+      # Python settings
+      - PYTHONPATH=/app/python:${PYTHONPATH:-}
+      # OpenMP settings for parallel processing
+      - OMP_NUM_THREADS=${OMP_NUM_THREADS:-1}
+    networks:
+      - hybrid-network
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    # Resource limits (adjust based on your system)
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 16G
+        reservations:
+          cpus: '4'
+          memory: 8G
+    # Health check
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import open3d; import cppcore; print('Health check passed')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    # For GUI support (optional)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Proper signal handling
+    init: true
+
+  # Test service for validation
+  test-hybrid:
+    image: hybrid-shoe-matcher:latest
+    container_name: hybrid-test
+    command: >
+      bash -c "
+        echo '=== Running Hybrid Matcher Test ===' &&
+        /app/test_env.sh &&
+        echo '' &&
+        echo '=== Test Complete ==='
+      "
+    volumes:
+      - ./models:/app/models:ro
+      - ./candidates:/app/candidates:ro
+      - ./output:/app/output
+    environment:
+      - LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH:-}
+      - LD_PRELOAD=/usr/local/lib/libOpen3D.so
+      - PYTHONPATH=/app/python:${PYTHONPATH:-}
+      - OMP_NUM_THREADS=1
+    networks:
+      - hybrid-network
+    profiles:
+      - test
+    init: true
+
+volumes:
+  models-data:
+    driver: local
+  candidates-data:
+    driver: local
+
+networks:
+  hybrid-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.26.0.0/16
