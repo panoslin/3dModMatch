@@ -34,10 +34,22 @@ from hybrid_matcher import (
 import cppcore
 
 
+def generate_single_heatmap(args):
+    """
+    生成单个热图的工作函数
+    在独立进程中运行（Phase 2）
+    """
+    Vt, Ft, Vc_final, Fc, r, html_path = args
+    try:
+        generate_clearance_heatmap(Vt, Ft, Vc_final, Fc, r, html_path)
+        return f"Generated: {html_path.name}"
+    except Exception as e:
+        return f"Failed: {html_path.name} - {str(e)}"
+
 def process_single_candidate(args):
     """
     处理单个候选模型的工作函数
-    在独立进程中运行
+    在独立进程中运行（Phase 1）
     """
     (cand_path, target_data, params) = args
     
@@ -265,12 +277,15 @@ def run_multiprocess_matcher(
     print(f"\nStarting parallel processing with {num_processes} processes...")
     print("-"*70)
     
-    # 使用进程池并行处理
+    # PHASE 1: 使用进程池并行处理候选模型匹配
+    print(f"\n🔄 PHASE 1: Candidate Matching with {num_processes} processes...")
     with Pool(processes=num_processes) as pool:
         results = pool.map(process_single_candidate, tasks)
     
     # 过滤None结果
     results = [r for r in results if r is not None]
+    
+    print(f"✅ PHASE 1 completed: {len(results)} candidates processed")
     
     # 按三级排序：1.覆盖率(高到低) 2.体积(低到高) 3.P15间隙值(低到高)
     results.sort(key=lambda x: (
@@ -298,15 +313,28 @@ def run_multiprocess_matcher(
                     glb_path = Path(export_glb_dir) / f"{base_name}.glb"
                     export_glb(Vc_final, Fc, glb_path)
     
-    # 生成热图
-    print(f"Generating heatmaps to {export_heatmap_dir}...")
+    # PHASE 2: 热图生成（单独的多进程阶段）
     if export_heatmap_dir and results:
+        print(f"\n🔄 PHASE 2: Heatmap Generation...")
         Path(export_heatmap_dir).mkdir(parents=True, exist_ok=True)
+        
+        # 准备热图生成任务
+        heatmap_tasks = []
         for i, r in enumerate(results[:min(export_topk, len(results))]):
             if '_mesh_data' in r and r['_mesh_data'] is not None:
                 Vc_final, Fc = r['_mesh_data']
                 html_path = Path(export_heatmap_dir) / f"{i+1:02d}_{Path(r['path']).stem}_heatmap.html"
-                generate_clearance_heatmap(Vt, Ft, Vc_final, Fc, r, html_path)
+                heatmap_tasks.append((Vt, Ft, Vc_final, Fc, r, html_path))
+        
+        if heatmap_tasks:
+            # 使用单独的多进程池生成热图
+            heatmap_processes = min(len(heatmap_tasks), 4)  # 限制热图生成进程数
+            print(f"  Generating {len(heatmap_tasks)} heatmaps with {heatmap_processes} processes...")
+            
+            with Pool(processes=heatmap_processes) as heatmap_pool:
+                heatmap_pool.map(generate_single_heatmap, heatmap_tasks)
+            
+            print(f"✅ PHASE 2 completed: {len(heatmap_tasks)} heatmaps generated")
     
     # 清理内部数据
     for r in results:

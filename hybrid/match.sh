@@ -7,8 +7,6 @@ python3 hybrid/python/hybrid_matcher_multiprocess.py   \
 --target "models/34鞋模(1).3dm"   \
 --candidates candidates/   \
 --clearance 2.0   \
-# --enable-scaling   \
-# --max-scale 1.03   \
 --no-scaling   \
 --enable-multi-start   \
 --threshold p15   \
