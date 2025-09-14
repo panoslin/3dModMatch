@@ -164,8 +164,8 @@ def process_single_candidate(args):
                 'transform': best_result['align']['T'].tolist(),
                 'volume': cand_features['volume'],
                 'volume_ratio': cand_features['volume'] / target_features['volume'],
-                # 保存对齐后的网格用于导出
-                '_mesh_data': (best_result['Vc_final'], best_result['Fc']) if best_metric >= params['clearance'] else None
+                # 保存对齐后的网格用于导出（所有候选者都保存，用于热图生成）
+                '_mesh_data': (best_result['Vc_final'], best_result['Fc'])
             }
             
             status = "✅ PASS" if best_metric >= params['clearance'] else "❌ FAIL"
@@ -303,7 +303,7 @@ def run_multiprocess_matcher(
     if export_heatmap_dir and results:
         Path(export_heatmap_dir).mkdir(parents=True, exist_ok=True)
         for i, r in enumerate(results[:min(export_topk, len(results))]):
-            if r.get(f'pass_{use_adaptive_threshold}', False) and '_mesh_data' in r:
+            if '_mesh_data' in r and r['_mesh_data'] is not None:
                 Vc_final, Fc = r['_mesh_data']
                 html_path = Path(export_heatmap_dir) / f"{i+1:02d}_{Path(r['path']).stem}_heatmap.html"
                 generate_clearance_heatmap(Vt, Ft, Vc_final, Fc, r, html_path)

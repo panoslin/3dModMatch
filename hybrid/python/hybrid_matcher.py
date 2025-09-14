@@ -13,6 +13,8 @@ import json
 import argparse
 import cppcore
 import plotly.graph_objects as go
+import multiprocessing as mp
+from multiprocessing import Pool, cpu_count
 from sklearn.linear_model import RANSACRegressor
 import warnings
 warnings.filterwarnings('ignore')
@@ -217,30 +219,60 @@ def export_glb(mesh_V, mesh_F, output_path):
     mesh.export(output_path)
     print(f"  Exported GLB: {output_path}")
 
+def compute_clearance_batch(args):
+    """
+    Process a single batch of vertices for clearance calculation
+    Used by multiprocessing to parallelize clearance computation
+    """
+    vertices_batch, target_mesh_data = args
+    # Reconstruct mesh object from data (avoid passing complex objects between processes)
+    mesh_target = trimesh.Trimesh(vertices=target_mesh_data[0], faces=target_mesh_data[1])
+    _, distances, _ = mesh_target.nearest.on_surface(vertices_batch)
+    return distances
+
 def generate_clearance_heatmap(V_target, F_target, V_cand, F_cand, clearance_data, output_html):
     """
-    Generate interactive clearance heatmap using Plotly
+    Generate interactive clearance heatmap using Plotly with vertex-based clearance calculation
     """
-    # Sample points on candidate surface for clearance visualization
+    # Create mesh objects
     mesh_cand = trimesh.Trimesh(vertices=V_cand, faces=F_cand)
     mesh_target = trimesh.Trimesh(vertices=V_target, faces=F_target)
     
-    # Sample points for visualization
-    sample_points = mesh_cand.sample(5000)
+    # Compute clearance using vectorized + multiprocessing approach
+    print(f"  Computing clearance for {len(V_cand)} vertices using vectorized + multiprocessing approach...")
     
-    # Compute approximate clearances
-    clearances = []
-    for pt in sample_points:
-        # Find nearest point on target
-        closest, distance, _ = mesh_target.nearest.on_surface([pt])
-        clearances.append(distance[0])
+    # Determine optimal batch size based on CPU cores and vertex count
+    cpu_cores = cpu_count()
+    optimal_batch_size = max(1000, len(V_cand) // (cpu_cores * 4))  # 4 batches per core
+    optimal_batch_size = min(optimal_batch_size, 10000)  # Cap at 10K to avoid memory issues
     
-    clearances = np.array(clearances)
+    print(f"  Using {cpu_cores} CPU cores with batch size {optimal_batch_size}")
+    
+    if len(V_cand) > optimal_batch_size:
+        # Create batches for multiprocessing
+        batches = [V_cand[i:i+optimal_batch_size] for i in range(0, len(V_cand), optimal_batch_size)]
+        target_mesh_data = (V_target, F_target)  # Pass only vertex and face data
+        
+        print(f"  Processing {len(batches)} batches in parallel...")
+        
+        # Use multiprocessing for parallel batch processing
+        with Pool(processes=cpu_cores) as pool:
+            results = pool.map(compute_clearance_batch, 
+                              [(batch, target_mesh_data) for batch in batches])
+        
+        # Combine results from all processes
+        clearances = np.concatenate(results)
+    else:
+        # Single vectorized query for smaller meshes
+        print(f"  Processing single batch (small mesh)...")
+        _, clearances, _ = mesh_target.nearest.on_surface(V_cand)
+    
+    print(f"  Clearance range: {clearances.min():.3f}mm - {clearances.max():.3f}mm")
     
     # Create Plotly figure
     fig = go.Figure()
     
-    # Add target mesh (semi-transparent)
+    # Add target mesh (solid, light color for contrast)
     fig.add_trace(go.Mesh3d(
         x=V_target[:, 0],
         y=V_target[:, 1],
@@ -249,26 +281,26 @@ def generate_clearance_heatmap(V_target, F_target, V_cand, F_cand, clearance_dat
         j=F_target[:, 1],
         k=F_target[:, 2],
         name='Target',
-        color='lightblue',
-        opacity=0.3
+        color='lightgray',
+        opacity=1.0  # Solid, not transparent
     ))
     
-    # Add clearance points
-    fig.add_trace(go.Scatter3d(
-        x=sample_points[:, 0],
-        y=sample_points[:, 1],
-        z=sample_points[:, 2],
-        mode='markers',
-        marker=dict(
-            size=3,
-            color=clearances,
-            colorscale='RdYlGn',
-            cmin=0,
-            cmax=10,
-            colorbar=dict(title='Clearance (mm)'),
-            showscale=True
-        ),
-        name='Clearance'
+    # Add candidate mesh with clearance-based coloring (solid)
+    fig.add_trace(go.Mesh3d(
+        x=V_cand[:, 0],
+        y=V_cand[:, 1],
+        z=V_cand[:, 2],
+        i=F_cand[:, 0],
+        j=F_cand[:, 1],
+        k=F_cand[:, 2],
+        intensity=clearances,  # Use vertex clearance values for coloring
+        colorscale='RdYlGn',
+        cmin=0,
+        cmax=10,
+        colorbar=dict(title='Clearance (mm)'),
+        opacity=1.0,  # Solid, not transparent for better visibility
+        name='Candidate Clearance',
+        showscale=True
     ))
     
     # Update layout
