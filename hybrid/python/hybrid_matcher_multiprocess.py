@@ -272,8 +272,12 @@ def run_multiprocess_matcher(
     # 过滤None结果
     results = [r for r in results if r is not None]
     
-    # 按指标值排序
-    results.sort(key=lambda x: x.get('metric_value', -float('inf')), reverse=True)
+    # 按三级排序：1.覆盖率(高到低) 2.体积(低到高) 3.P15间隙值(低到高)
+    results.sort(key=lambda x: (
+        -x.get('inside_ratio', 0.0),  # 第一级：覆盖率从高到低（负号实现降序）
+        x.get('volume', float('inf')),  # 第二级：体积从低到高
+        x.get('p15_clearance', float('inf'))  # 第三级：P15间隙值从低到高
+    ))
     
     # 导出通过的结果
     if export_ply_dir or export_glb_dir:
@@ -295,6 +299,7 @@ def run_multiprocess_matcher(
                     export_glb(Vc_final, Fc, glb_path)
     
     # 生成热图
+    print(f"Generating heatmaps to {export_heatmap_dir}...")
     if export_heatmap_dir and results:
         Path(export_heatmap_dir).mkdir(parents=True, exist_ok=True)
         for i, r in enumerate(results[:min(export_topk, len(results))]):
@@ -337,10 +342,11 @@ def run_multiprocess_matcher(
     print(f"  • P20 ≥ {clearance}mm: {len(passing_p20)}")
     
     if results:
-        print(f"\nTop matches:")
+        print(f"\nTop matches (sorted by: Coverage → Volume → P15):")
         for i, r in enumerate(results[:3]):
             status = "✅" if r.get(f'pass_{use_adaptive_threshold}', False) else "❌"
             print(f"{i+1}. {r['name']}: {status}")
+            print(f"   Coverage: {r.get('inside_ratio', 0.0):.1%}, Volume: {r['volume']:.0f}mm³, P15: {r['p15_clearance']:.2f}mm")
             print(f"   Scale: {r['scale_used']:.3f}, Chamfer: {r['chamfer']:.1f}mm")
             print(f"   Min={r['min_clearance']:.2f}, P10={r['p10_clearance']:.2f}, "
                   f"P15={r['p15_clearance']:.2f}, P20={r['p20_clearance']:.2f}mm")
