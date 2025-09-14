@@ -8,6 +8,7 @@ Multi-Process Shoe Last Matcher
 import numpy as np
 import multiprocessing as mp
 from multiprocessing import Pool, cpu_count
+from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 import os
 import sys
@@ -28,28 +29,16 @@ from hybrid_matcher import (
     multi_start_alignment,
     compute_detailed_clearance_metrics,
     export_ply,
-    export_glb,
-    generate_clearance_heatmap
+    export_glb
 )
+from heatmap_worker import generate_clearance_heatmap_standalone
 import cppcore
 
-
-def generate_single_heatmap(args):
-    """
-    生成单个热图的工作函数
-    在独立进程中运行（Phase 2）
-    """
-    Vt, Ft, Vc_final, Fc, r, html_path = args
-    try:
-        generate_clearance_heatmap(Vt, Ft, Vc_final, Fc, r, html_path)
-        return f"Generated: {html_path.name}"
-    except Exception as e:
-        return f"Failed: {html_path.name} - {str(e)}"
 
 def process_single_candidate(args):
     """
     处理单个候选模型的工作函数
-    在独立进程中运行（Phase 1）
+    在独立进程中运行
     """
     (cand_path, target_data, params) = args
     
@@ -277,15 +266,12 @@ def run_multiprocess_matcher(
     print(f"\nStarting parallel processing with {num_processes} processes...")
     print("-"*70)
     
-    # PHASE 1: 使用进程池并行处理候选模型匹配
-    print(f"\n🔄 PHASE 1: Candidate Matching with {num_processes} processes...")
-    with Pool(processes=num_processes) as pool:
-        results = pool.map(process_single_candidate, tasks)
+    # 使用ProcessPoolExecutor进行并行处理，避免嵌套多进程问题
+    with ProcessPoolExecutor(max_workers=num_processes) as executor:
+        results = list(executor.map(process_single_candidate, tasks))
     
     # 过滤None结果
     results = [r for r in results if r is not None]
-    
-    print(f"✅ PHASE 1 completed: {len(results)} candidates processed")
     
     # 按三级排序：1.覆盖率(高到低) 2.体积(低到高) 3.P15间隙值(低到高)
     results.sort(key=lambda x: (
@@ -313,9 +299,9 @@ def run_multiprocess_matcher(
                     glb_path = Path(export_glb_dir) / f"{base_name}.glb"
                     export_glb(Vc_final, Fc, glb_path)
     
-    # PHASE 2: 热图生成（单独的多进程阶段）
+    # 生成热图 - 使用独立的ProcessPoolExecutor避免嵌套多进程死锁
+    print(f"Generating heatmaps to {export_heatmap_dir}...")
     if export_heatmap_dir and results:
-        print(f"\n🔄 PHASE 2: Heatmap Generation...")
         Path(export_heatmap_dir).mkdir(parents=True, exist_ok=True)
         
         # 准备热图生成任务
@@ -324,17 +310,17 @@ def run_multiprocess_matcher(
             if '_mesh_data' in r and r['_mesh_data'] is not None:
                 Vc_final, Fc = r['_mesh_data']
                 html_path = Path(export_heatmap_dir) / f"{i+1:02d}_{Path(r['path']).stem}_heatmap.html"
-                heatmap_tasks.append((Vt, Ft, Vc_final, Fc, r, html_path))
+                heatmap_tasks.append((Vt, Ft, Vc_final, Fc, r, str(html_path)))
         
+        # 使用ProcessPoolExecutor独立生成热图，避免嵌套多进程
         if heatmap_tasks:
-            # 使用单独的多进程池生成热图
-            heatmap_processes = min(len(heatmap_tasks), 4)  # 限制热图生成进程数
-            print(f"  Generating {len(heatmap_tasks)} heatmaps with {heatmap_processes} processes...")
+            print(f"  Generating {len(heatmap_tasks)} heatmaps using separate process pool...")
+            with ProcessPoolExecutor(max_workers=min(3, len(heatmap_tasks))) as executor:
+                heatmap_results = list(executor.map(generate_clearance_heatmap_standalone, heatmap_tasks))
             
-            with Pool(processes=heatmap_processes) as heatmap_pool:
-                heatmap_pool.map(generate_single_heatmap, heatmap_tasks)
-            
-            print(f"✅ PHASE 2 completed: {len(heatmap_tasks)} heatmaps generated")
+            # 检查结果
+            successful = sum(1 for r in heatmap_results if r['success'])
+            print(f"  Successfully generated {successful}/{len(heatmap_tasks)} heatmaps")
     
     # 清理内部数据
     for r in results:

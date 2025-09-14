@@ -13,3 +13,4 @@ python3 hybrid/python/hybrid_matcher_multiprocess.py   \
 --export-report output/report.json   \
 --export-ply-dir output/ply \
 --export-heatmap-dir output/heatmap
+# --max-scale 1.03   \
