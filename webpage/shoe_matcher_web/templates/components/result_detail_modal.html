@@ -1,0 +1,110 @@
+<!-- 匹配结果详情Modal -->
+<div class="modal fade" id="resultDetailModal" tabindex="-1" aria-labelledby="resultDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="resultDetailModalLabel">
+                    <i class="fas fa-chart-bar me-2"></i>匹配结果详情
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <!-- 左侧匹配指标 -->
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">匹配指标</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="metric-item mb-3">
+                                    <label class="text-muted small">覆盖率</label>
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span class="h5 mb-0" id="metric-coverage">--</span>
+                                        <span class="badge bg-info">%</span>
+                                    </div>
+                                    <div class="progress mt-1" style="height: 4px;">
+                                        <div class="progress-bar bg-info" id="progress-coverage"></div>
+                                    </div>
+                                </div>
+                                
+                                <div class="metric-item mb-3">
+                                    <label class="text-muted small">体积比</label>
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span class="h5 mb-0" id="metric-volume">--</span>
+                                        <span class="badge bg-success">x</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="metric-item mb-3">
+                                    <label class="text-muted small">P15间隙</label>
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span class="h5 mb-0" id="metric-p15">--</span>
+                                        <span class="badge bg-warning">mm</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="metric-item mb-3">
+                                    <label class="text-muted small">最小间隙</label>
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span class="h5 mb-0" id="metric-min">--</span>
+                                        <span class="badge bg-danger">mm</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="metric-item mb-3">
+                                    <label class="text-muted small">Chamfer距离</label>
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span class="h5 mb-0" id="metric-chamfer">--</span>
+                                        <span class="badge bg-secondary">mm</span>
+                                    </div>
+                                </div>
+                                
+                                <hr>
+                                
+                                <div class="text-center">
+                                    <div class="badge fs-6 p-2" id="overall-status">
+                                        <i class="fas fa-question-circle me-1"></i>评估中
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 右侧3D热图预览 -->
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h6 class="mb-0">间隙热图</h6>
+                                <div>
+                                    <button class="btn btn-sm btn-outline-primary" id="fullscreen-heatmap">
+                                        <i class="fas fa-expand"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-success" id="download-heatmap">
+                                        <i class="fas fa-download"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body p-0">
+                                <div id="heatmap-preview" style="height: 500px;">
+                                    <div class="d-flex align-items-center justify-content-center h-100">
+                                        <div class="text-center">
+                                            <i class="fas fa-spinner fa-spin fa-2x text-muted mb-2"></i>
+                                            <p class="text-muted">正在生成热图...</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-primary" id="export-result">
+                    <i class="fas fa-download me-2"></i>导出结果
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

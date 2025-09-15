@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}3D鞋模智能匹配系统{% endblock %}</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    
+    <!-- Custom CSS -->
+    {% load static %}
+    <link href="{% static 'css/main.css' %}" rel="stylesheet">
+    
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- 顶部导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{% url 'core:matching' %}">
+                <i class="fas fa-cube me-2"></i>
+                3D鞋模智能匹配系统
+            </a>
+            
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="{% url 'core:matching' %}">
+                    <i class="fas fa-home me-1"></i>匹配
+                </a>
+                <a class="nav-link" href="{% url 'core:history' %}">
+                    <i class="fas fa-history me-1"></i>历史记录
+                </a>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- 主要内容区域 -->
+    <main class="container-fluid py-3">
+        {% block content %}{% endblock %}
+    </main>
+    
+    <!-- 模态框容器 -->
+    <div id="modal-container">
+        {% include 'components/shoe_upload_modal.html' %}
+        {% include 'components/blank_manage_modal.html' %}
+        {% include 'components/result_detail_modal.html' %}
+        {% include 'components/preview_3d_modal.html' %}
+    </div>
+    
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    
+    <!-- Custom JS -->
+    <script src="{% static 'js/main.js' %}"></script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
+
+

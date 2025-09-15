@@ -1,0 +1,80 @@
+<!-- 粗胚管理Modal -->
+<div class="modal fade" id="blankManageModal" tabindex="-1" aria-labelledby="blankManageModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="blankManageModalLabel">
+                    <i class="fas fa-database me-2"></i>粗胚库管理
+                </h5>
+                <div class="modal-header-actions">
+                    <button type="button" class="btn btn-primary btn-sm me-2" id="upload-blank-btn">
+                        <i class="fas fa-plus me-1"></i>上传粗胚
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="manage-categories-btn">
+                        <i class="fas fa-tags me-1"></i>管理分类
+                    </button>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <!-- 左侧分类树 -->
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">分类</h6>
+                            </div>
+                            <div class="card-body p-2">
+                                <div id="category-tree">
+                                    <div class="text-muted text-center py-3">
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                        <br>加载中...
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 中间粗胚列表 -->
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h6 class="mb-0">粗胚列表</h6>
+                                <small class="text-muted">共 <span id="blank-count">0</span> 个</small>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="list-group list-group-flush" id="blank-list">
+                                    <div class="text-muted text-center py-4">
+                                        <i class="fas fa-box-open fa-2x mb-2"></i>
+                                        <br>暂无粗胚文件
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 右侧预览区域 -->
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">预览</h6>
+                            </div>
+                            <div class="card-body">
+                                <div id="blank-preview" class="text-center">
+                                    <i class="fas fa-eye fa-2x text-muted mb-2"></i>
+                                    <p class="text-muted small">选择粗胚查看预览</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-primary" id="apply-blank-selection">
+                    <i class="fas fa-check me-2"></i>应用选择
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

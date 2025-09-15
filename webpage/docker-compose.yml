@@ -1,0 +1,194 @@
+version: '3.8'
+
+services:
+  # PostgreSQL数据库
+  db:
+    image: postgres:13
+    container_name: shoe_matcher_db
+    environment:
+      POSTGRES_DB: ${DB_NAME:-shoe_matcher}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres123}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - shoe_matcher_network
+
+  # Redis缓存和消息队列
+  redis:
+    image: redis:7-alpine
+    container_name: shoe_matcher_redis
+    command: redis-server --appendonly yes --maxmemory ${REDIS_MAX_MEMORY:-512mb} --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - shoe_matcher_network
+
+  # Hybrid匹配服务容器
+  matcher:
+    # build:
+      # context: ../hybrid
+      # dockerfile: Dockerfile
+    image: panoslin/shoe_matcher_hybrid:latest
+    container_name: shoe_matcher_hybrid
+    command: ["tail", "-f", "/dev/null"]  # 保持容器运行
+    volumes:
+      - ./results:/app/output
+      - ./shoe_matcher_web/media:/app/input:ro
+      - ./logs:/app/logs
+    environment:
+      - LD_LIBRARY_PATH=/usr/local/lib
+      - LD_PRELOAD=/usr/local/lib/libOpen3D.so
+      - PYTHONPATH=/app/python
+      - OMP_NUM_THREADS=${MATCHER_OMP_THREADS:-4}
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import cppcore; print('OK')"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - shoe_matcher_network
+    deploy:
+      resources:
+        limits:
+          cpus: '${MATCHER_MAX_CPUS:-8}'
+          memory: ${MATCHER_MAX_MEMORY:-8G}
+        reservations:
+          cpus: '${MATCHER_MIN_CPUS:-4}'
+          memory: ${MATCHER_MIN_MEMORY:-4G}
+
+  # Django Web应用
+  web:
+    build: .
+    container_name: shoe_matcher_web
+    ports:
+      - "${WEB_PORT:-8000}:8000"
+    volumes:
+      - ./shoe_matcher_web/media:/app/media
+      - ./shoe_matcher_web/static:/app/static
+      - ./logs:/app/logs
+      - ./results:/app/results
+      # 测试数据挂载
+      - ../candidates:/app/test_data/candidates:ro
+      - ../models:/app/test_data/models:ro
+      # Docker socket用于调用匹配容器
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DEBUG=${DEBUG:-False}
+      - SECRET_KEY=${SECRET_KEY:-django-insecure-change-this}
+      - DJANGO_ENVIRONMENT=docker
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      # 数据库配置
+      - DB_ENGINE=django.db.backends.postgresql
+      - DB_NAME=${DB_NAME:-shoe_matcher}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres123}
+      - DB_HOST=db
+      - DB_PORT=5432
+      # Redis配置
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # 匹配服务配置
+      - MATCHER_DOCKER_IMAGE=hybrid-shoe-matcher:latest
+      - DEFAULT_CLEARANCE=${DEFAULT_CLEARANCE:-2.0}
+      - MAX_CONCURRENT_TASKS=${MAX_CONCURRENT_TASKS:-3}
+      - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE:-104857600}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      matcher:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    restart: unless-stopped
+    networks:
+      - shoe_matcher_network
+    # 需要访问Docker守护进程
+    user: root
+
+  # Celery异步任务处理
+  celery:
+    build: .
+    container_name: shoe_matcher_celery
+    command: ["celery"]
+    volumes:
+      - ./shoe_matcher_web/media:/app/media
+      - ./logs:/app/logs
+      - ./results:/app/results
+      # Docker socket用于调用匹配容器
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DEBUG=${DEBUG:-False}
+      - SECRET_KEY=${SECRET_KEY:-django-insecure-change-this}
+      - DJANGO_ENVIRONMENT=docker
+      # 数据库配置
+      - DB_ENGINE=django.db.backends.postgresql
+      - DB_NAME=${DB_NAME:-shoe_matcher}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres123}
+      - DB_HOST=db
+      - DB_PORT=5432
+      # Redis配置
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # 匹配服务配置
+      - MATCHER_DOCKER_IMAGE=hybrid-shoe-matcher:latest
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      matcher:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - shoe_matcher_network
+    # 需要访问Docker守护进程
+    user: root
+    deploy:
+      resources:
+        limits:
+          cpus: '${CELERY_MAX_CPUS:-4}'
+          memory: ${CELERY_MAX_MEMORY:-4G}
+        reservations:
+          cpus: '${CELERY_MIN_CPUS:-2}'
+          memory: ${CELERY_MIN_MEMORY:-2G}
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  shoe_matcher_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16

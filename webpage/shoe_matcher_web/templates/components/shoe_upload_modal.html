@@ -1,0 +1,65 @@
+<!-- 鞋模上传Modal -->
+<div class="modal fade" id="shoeUploadModal" tabindex="-1" aria-labelledby="shoeUploadModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="shoeUploadModalLabel">
+                    <i class="fas fa-upload me-2"></i>上传鞋模文件
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <!-- 文件上传区域 -->
+                        <div class="upload-zone" id="shoe-upload-zone">
+                            <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
+                            <h6>拖拽文件到此处或点击选择</h6>
+                            <p class="text-muted small">支持.3dm格式，最大100MB</p>
+                            <input type="file" id="shoe-file-input" accept=".3dm" style="display: none;">
+                            <button type="button" class="btn btn-outline-primary" id="select-shoe-file">
+                                选择文件
+                            </button>
+                        </div>
+                        
+                        <!-- 文件信息 -->
+                        <div id="shoe-file-info" class="mt-3 d-none">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h6 class="card-title">文件信息</h6>
+                                    <p class="card-text">
+                                        <strong>文件名:</strong> <span id="shoe-filename">--</span><br>
+                                        <strong>大小:</strong> <span id="shoe-filesize">--</span><br>
+                                        <strong>状态:</strong> <span id="shoe-status" class="badge bg-secondary">准备中</span>
+                                    </p>
+                                    <div class="progress mb-2" id="shoe-progress" style="display: none;">
+                                        <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <!-- 3D预览区域 -->
+                        <div class="preview-container">
+                            <div id="shoe-preview-loading" class="preview-loading">
+                                <i class="fas fa-spinner fa-spin fa-2x text-muted"></i>
+                                <p class="text-muted mt-2">正在生成预览...</p>
+                            </div>
+                            <div id="shoe-preview-content" style="display: none;">
+                                <!-- 3D预览将在这里显示 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="confirm-shoe-upload" disabled>
+                    <i class="fas fa-check me-2"></i>确认上传
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

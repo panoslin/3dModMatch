@@ -1,0 +1,202 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}智能匹配 - 3D鞋模智能匹配系统{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- 左侧控制面板 -->
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-cogs me-2"></i>匹配配置
+                </h5>
+            </div>
+            <div class="card-body">
+                <!-- 鞋模上传区域 -->
+                <div class="mb-4">
+                    <h6 class="fw-bold mb-3">
+                        <i class="fas fa-shoe-prints me-2 text-primary"></i>鞋模文件
+                    </h6>
+                    <div id="shoe-model-info" class="border rounded p-3 mb-3 d-none">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <strong id="shoe-model-name">未选择文件</strong>
+                                <div class="text-muted small mt-1">
+                                    <span id="shoe-model-volume">体积: --</span> |
+                                    <span id="shoe-model-size">大小: --</span>
+                                </div>
+                            </div>
+                            <button class="btn btn-sm btn-outline-primary" id="preview-shoe-btn">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#shoeUploadModal">
+                        <i class="fas fa-upload me-2"></i>上传鞋模文件
+                    </button>
+                </div>
+                
+                <!-- 粗胚分类选择 -->
+                <div class="mb-4">
+                    <h6 class="fw-bold mb-3">
+                        <i class="fas fa-tags me-2 text-success"></i>粗胚分类
+                    </h6>
+                    <div id="category-selection" class="mb-3">
+                        <div class="text-muted text-center py-3">
+                            请先管理粗胚库
+                        </div>
+                    </div>
+                    <button class="btn btn-success w-100" data-bs-toggle="modal" data-bs-target="#blankManageModal">
+                        <i class="fas fa-database me-2"></i>管理粗胚库
+                    </button>
+                </div>
+                
+                <!-- 匹配参数设置 -->
+                <div class="mb-4">
+                    <h6 class="fw-bold mb-3">
+                        <i class="fas fa-sliders-h me-2 text-warning"></i>匹配参数
+                    </h6>
+                    
+                    <div class="mb-3">
+                        <label for="clearance" class="form-label">间隙要求 (mm)</label>
+                        <input type="number" class="form-control" id="clearance" 
+                               value="2.0" min="0.5" max="10.0" step="0.1">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="threshold" class="form-label">通过标准</label>
+                        <select class="form-select" id="threshold">
+                            <option value="min">严格标准 (Min)</option>
+                            <option value="p10">P10标准</option>
+                            <option value="p15" selected>P15标准 (推荐)</option>
+                            <option value="p20">P20标准</option>
+                        </select>
+                    </div>
+                    
+                    <!-- 高级选项 -->
+                    <div class="accordion" id="advancedOptions">
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" 
+                                        data-bs-toggle="collapse" data-bs-target="#collapseAdvanced">
+                                    高级选项
+                                </button>
+                            </h2>
+                            <div id="collapseAdvanced" class="accordion-collapse collapse" 
+                                 data-bs-parent="#advancedOptions">
+                                <div class="accordion-body">
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" 
+                                               id="enableScaling" checked>
+                                        <label class="form-check-label" for="enableScaling">
+                                            启用自适应缩放
+                                        </label>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" 
+                                               id="enableMultiStart" checked>
+                                        <label class="form-check-label" for="enableMultiStart">
+                                            启用多起点对齐
+                                        </label>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label for="maxScale" class="form-label small">最大缩放比例</label>
+                                        <input type="number" class="form-control form-control-sm" 
+                                               id="maxScale" value="1.03" min="1.00" max="1.10" step="0.01">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 开始匹配按钮 -->
+                <button class="btn btn-lg btn-warning w-100" id="startMatching" disabled>
+                    <i class="fas fa-play me-2"></i>开始匹配
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 右侧结果展示区域 -->
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-line me-2"></i>匹配结果
+                </h5>
+                <div id="result-actions" class="d-none">
+                    <button class="btn btn-sm btn-outline-primary me-2" id="export-report-btn">
+                        <i class="fas fa-download me-1"></i>导出报告
+                    </button>
+                    <button class="btn btn-sm btn-outline-success" id="export-models-btn">
+                        <i class="fas fa-cube me-1"></i>导出模型
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- 匹配状态显示 -->
+                <div id="matching-status" class="d-none">
+                    <div class="text-center py-4">
+                        <div class="spinner-border text-primary mb-3" role="status">
+                            <span class="visually-hidden">匹配中...</span>
+                        </div>
+                        <h6 id="status-message">正在初始化匹配任务...</h6>
+                        <div class="progress mb-2" style="height: 6px;">
+                            <div class="progress-bar" id="progress-bar" role="progressbar" 
+                                 style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                            </div>
+                        </div>
+                        <small class="text-muted" id="progress-detail">准备中...</small>
+                    </div>
+                </div>
+                
+                <!-- 结果列表 -->
+                <div id="results-container" class="d-none">
+                    <div class="mb-3">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <h6 class="mb-0">匹配结果 <span class="badge bg-primary" id="results-count">0</span></h6>
+                            </div>
+                            <div class="col-md-4 text-end">
+                                <small class="text-muted">处理时间: <span id="processing-time">--</span>秒</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="results-table">
+                            <thead>
+                                <tr>
+                                    <th>粗胚名称</th>
+                                    <th>覆盖率</th>
+                                    <th>体积比</th>
+                                    <th>P15间隙</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- 结果将通过JavaScript动态填充 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- 默认状态 -->
+                <div id="default-state" class="text-center py-5">
+                    <i class="fas fa-search fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">准备开始匹配</h5>
+                    <p class="text-muted">请上传鞋模文件并选择粗胚分类后开始匹配</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/matching.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,44 @@
+<!-- 3D预览Modal -->
+<div class="modal fade" id="preview3DModal" tabindex="-1" aria-labelledby="preview3DModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="preview3DModalLabel">
+                    <i class="fas fa-cube me-2"></i>3D模型预览
+                </h5>
+                <div class="modal-header-actions">
+                    <button type="button" class="btn btn-sm btn-outline-primary me-2" id="reset-view">
+                        <i class="fas fa-undo"></i> 重置视角
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-success" id="screenshot-btn">
+                        <i class="fas fa-camera"></i> 截图
+                    </button>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div id="preview-3d-content" style="height: 600px;">
+                    <div class="d-flex align-items-center justify-content-center h-100">
+                        <div class="text-center">
+                            <i class="fas fa-spinner fa-spin fa-3x text-muted mb-3"></i>
+                            <h6 class="text-muted">正在加载3D模型...</h6>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <!-- 模型信息 -->
+                <div class="me-auto">
+                    <small class="text-muted">
+                        <span id="model-info">
+                            顶点: <span id="vertex-count">--</span> | 
+                            面: <span id="face-count">--</span> | 
+                            体积: <span id="model-volume">--</span> mm³
+                        </span>
+                    </small>
+                </div>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>

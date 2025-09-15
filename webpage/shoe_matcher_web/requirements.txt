@@ -1,0 +1,32 @@
+# Django核心
+Django==4.2.16
+djangorestframework==3.15.2
+
+# 数据库
+psycopg2-binary==2.9.10
+
+# 异步任务
+celery==5.4.0
+redis==5.2.1
+
+# Web服务器
+gunicorn==21.2.0
+
+# 3D处理相关
+numpy==1.26.4
+trimesh==3.23.5
+rhino3dm==8.17.0
+plotly==6.3.0
+
+# 开发工具
+django-extensions==3.2.3
+
+# 其他依赖
+Pillow==10.4.0
+python-decouple==3.8
+
+# CORS支持
+django-cors-headers==4.4.0
+
+# 缓存
+django-redis==5.4.0
