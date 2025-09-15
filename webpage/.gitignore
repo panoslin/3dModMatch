@@ -1,0 +1,70 @@
+# 3D鞋模智能匹配系统 - Git忽略文件
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# 环境变量
+.env.local
+.env.development
+.env.test
+.env.production
+
+# 媒体文件
+media/
+staticfiles/
+
+# 日志文件
+logs/
+*.log
+
+# 结果文件
+results/
+output/
+
+# 临时文件
+tmp/
+temp/
+*.tmp
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+.dockerignore
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 备份文件
+*.bak
+*.backup
+*.sql
