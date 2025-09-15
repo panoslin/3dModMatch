@@ -1,0 +1,23 @@
+# Core dependencies for shoe last matcher
+numpy==1.26.4
+scipy==1.15.3
+trimesh==3.23.5
+rhino3dm==8.17.0
+plotly==6.3.0
+scikit-learn==1.7.1
+networkx==3.4.2
+rtree==1.4.1
+open3d==0.19.0
+
+# Build dependencies
+scikit-build-core==0.6.1
+pybind11==2.11.1
+Cython==0.29.37
+
+# Additional dependencies
+pandas==2.3.2
+pyembree==0.1.12
+pygltflib==1.16.5
+
+# For PyInstaller packaging
+pyinstaller==6.3.0

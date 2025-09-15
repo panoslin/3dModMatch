@@ -1,0 +1,121 @@
+<div class="dashboard-container">
+  <!-- Header -->
+  <div class="dashboard-header">
+    <h1 class="app-title">
+      <i class="pi pi-box"></i>
+      鞋模智能匹配系统
+    </h1>
+    <div class="header-actions">
+      <span class="version-info">v{{ version }}</span>
+      <button pButton icon="pi pi-cog" class="p-button-text" pTooltip="系统设置"></button>
+    </div>
+  </div>
+
+  <!-- Main Layout -->
+  <div class="dashboard-layout">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <ul class="sidebar-menu">
+        <li [class.active]="activeView === 'blanks'" (click)="setActiveView('blanks')">
+          <i class="pi pi-database"></i>
+          <span>粗胚管理</span>
+          <span class="badge" *ngIf="stats.totalBlanks">{{ stats.totalBlanks }}</span>
+        </li>
+        <li [class.active]="activeView === 'matching'" (click)="setActiveView('matching')">
+          <i class="pi pi-play-circle"></i>
+          <span>开始匹配</span>
+        </li>
+        <li [class.active]="activeView === 'history'" (click)="setActiveView('history')">
+          <i class="pi pi-history"></i>
+          <span>历史记录</span>
+          <span class="badge" *ngIf="stats.totalMatches">{{ stats.totalMatches }}</span>
+        </li>
+        <li class="separator"></li>
+        <li (click)="showStatistics()">
+          <i class="pi pi-chart-bar"></i>
+          <span>统计信息</span>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Content Area -->
+    <div class="content-area">
+      <!-- Blanks Management View -->
+      <div *ngIf="activeView === 'blanks'" class="view-container">
+        <app-blank-manager></app-blank-manager>
+      </div>
+
+      <!-- Matching View -->
+      <div *ngIf="activeView === 'matching'" class="view-container">
+        <app-matching></app-matching>
+      </div>
+
+      <!-- History View -->
+      <div *ngIf="activeView === 'history'" class="view-container">
+        <app-history></app-history>
+      </div>
+
+      <!-- Statistics View -->
+      <div *ngIf="activeView === 'statistics'" class="view-container">
+        <div class="statistics-panel">
+          <h2>系统统计</h2>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <i class="pi pi-box"></i>
+              <div class="stat-value">{{ stats.totalBlanks || 0 }}</div>
+              <div class="stat-label">粗胚总数</div>
+            </div>
+            <div class="stat-card">
+              <i class="pi pi-file"></i>
+              <div class="stat-value">{{ stats.totalModels || 0 }}</div>
+              <div class="stat-label">鞋模总数</div>
+            </div>
+            <div class="stat-card">
+              <i class="pi pi-sync"></i>
+              <div class="stat-value">{{ stats.totalMatches || 0 }}</div>
+              <div class="stat-label">匹配任务</div>
+            </div>
+            <div class="stat-card success">
+              <i class="pi pi-check-circle"></i>
+              <div class="stat-value">{{ stats.successfulMatches || 0 }}</div>
+              <div class="stat-label">成功匹配</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3D Viewer Panel (Right) -->
+    <div class="viewer-panel" *ngIf="showViewer">
+      <div class="viewer-header">
+        <h3>3D 预览</h3>
+        <button pButton icon="pi pi-times" class="p-button-text p-button-sm" 
+                (click)="toggleViewer()"></button>
+      </div>
+      <app-viewer [modelPath]="currentModelPath"></app-viewer>
+    </div>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <div class="status-left">
+      <span class="status-item">
+        <i class="pi pi-circle-fill" [class.online]="isConnected"></i>
+        {{ isConnected ? '已连接' : '未连接' }}
+      </span>
+      <span class="status-item" *ngIf="activeTask">
+        <i class="pi pi-spin pi-spinner"></i>
+        {{ activeTask }}
+      </span>
+    </div>
+    <div class="status-right">
+      <span class="status-item">
+        <i class="pi pi-server"></i>
+        内存: {{ memoryUsage }}MB
+      </span>
+      <span class="status-item">
+        {{ currentTime }}
+      </span>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,21 @@
+[build-system]
+requires = ["scikit-build-core>=0.5.1", "pybind11>=2.10", "setuptools", "wheel"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "shoe-last-hybrid"
+version = "0.5.0"
+requires-python = ">=3.9"
+dependencies = [
+  "numpy>=1.22",
+  "trimesh>=4.0",
+  "rhino3dm>=8.0",
+  "plotly>=5.0",
+  "open3d>=0.18",
+]
+
+[tool.scikit-build]
+cmake.minimum-version = "3.15"
+ninja.minimum-version = "1.10"
+cmake.build-type = "Release"
+cmake.args = ["-GNinja"]
