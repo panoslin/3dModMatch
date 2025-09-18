@@ -42,6 +42,7 @@
     
     <!-- 主要内容区域 -->
     <main class="container-fluid py-3">
+        {% csrf_token %}
         {% block content %}{% endblock %}
     </main>
     

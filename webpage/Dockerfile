@@ -35,7 +35,7 @@ RUN mkdir -p /app/media/{shoes,blanks,heatmaps} \
     /app/results
 
 # 设置权限
-RUN chmod +x /app/start_dev.sh /app/test_system.py /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 # 创建非root用户
 RUN adduser --disabled-password --gecos '' appuser && \

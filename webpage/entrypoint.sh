@@ -72,11 +72,12 @@ if [ "$1" = "web" ] || [ $# -eq 0 ]; then
     fi
     
     # 启动Web服务器
-    if [ "${DEBUG:-False}" = "True" ]; then
-        echo "🔧 开发模式启动..."
+    # 在Docker环境中使用开发服务器以便提供静态文件
+    if [ "${DJANGO_ENVIRONMENT}" = "docker" ] || [ "${DEBUG:-False}" = "True" ]; then
+        echo "🔧 开发模式启动 (Django runserver)..."
         exec python manage.py runserver 0.0.0.0:8000
     else
-        echo "🚀 生产模式启动..."
+        echo "🚀 生产模式启动 (Gunicorn)..."
         exec gunicorn --bind 0.0.0.0:8000 --workers 4 --worker-class sync --timeout 300 config.wsgi:application
     fi
 fi

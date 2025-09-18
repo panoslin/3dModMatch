@@ -7,6 +7,9 @@ from .base import *
 # Debug settings for Docker testing
 DEBUG = True
 
+# 在Docker环境中启用静态文件服务（用于开发测试）
+STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
+
 # Database
 DATABASES = {
     'default': {

@@ -1,6 +1,7 @@
 """
 3D鞋模智能匹配系统 URL配置
 """
+import os
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
@@ -15,7 +16,7 @@ urlpatterns = [
     path('api/visualization/', include('apps.visualization.urls')),
 ]
 
-# 开发环境静态文件服务
-if settings.DEBUG:
+# 静态文件服务（Docker环境中总是启用）
+if settings.DEBUG or os.environ.get('DJANGO_ENVIRONMENT') == 'docker':
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
