@@ -1,0 +1,127 @@
+<!-- 分类管理Modal -->
+<div class="modal fade" id="categoryManageModal" tabindex="-1" aria-labelledby="categoryManageModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="categoryManageModalLabel">
+                    <i class="fas fa-tags me-2"></i>分类管理
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <!-- 左侧分类树 -->
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h6 class="mb-0">分类树</h6>
+                                <button type="button" class="btn btn-primary btn-sm" id="add-category-btn">
+                                    <i class="fas fa-plus me-1"></i>添加分类
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div id="category-tree-manage">
+                                    <div class="text-muted text-center py-3">
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                        <br>加载中...
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 右侧操作面板 -->
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">操作面板</h6>
+                            </div>
+                            <div class="card-body">
+                                <div id="category-operation-panel">
+                                    <div class="text-muted text-center py-4">
+                                        <i class="fas fa-mouse-pointer fa-2x mb-2"></i>
+                                        <br>选择分类进行操作
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 分类表单Modal -->
+<div class="modal fade" id="categoryFormModal" tabindex="-1" aria-labelledby="categoryFormModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="categoryFormModalLabel">
+                    <i class="fas fa-tag me-2"></i>添加分类
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="category-form">
+                    <div class="mb-3">
+                        <label for="category-name" class="form-label">分类名称 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="category-name" name="name" required>
+                        <div class="invalid-feedback"></div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="category-parent" class="form-label">父分类</label>
+                        <select class="form-select" id="category-parent" name="parent">
+                            <option value="">-- 选择父分类 --</option>
+                        </select>
+                        <div class="form-text">留空表示创建顶级分类</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="category-description" class="form-label">描述</label>
+                        <textarea class="form-control" id="category-description" name="description" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="save-category-btn">
+                    <i class="fas fa-save me-2"></i>保存
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 删除确认Modal -->
+<div class="modal fade" id="deleteCategoryModal" tabindex="-1" aria-labelledby="deleteCategoryModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteCategoryModalLabel">
+                    <i class="fas fa-exclamation-triangle text-warning me-2"></i>确认删除
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>您确定要删除分类 <strong id="delete-category-name"></strong> 吗？</p>
+                <div id="delete-category-info" class="alert alert-info">
+                    <small>
+                        <i class="fas fa-info-circle me-1"></i>
+                        此操作会将分类标记为不可用，不会真正删除数据。
+                    </small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-danger" id="confirm-delete-category-btn">
+                    <i class="fas fa-trash me-2"></i>确认删除
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

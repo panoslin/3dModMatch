@@ -356,8 +356,7 @@ class Enhanced3DRenderer:
                 camera=dict(eye=dict(x=1.5, y=-1.8, z=1.2), center=dict(x=0, y=0, z=0), up=dict(x=0, y=0, z=1)),
                 bgcolor='rgb(248,249,250)'
             ),
-            width=1200,
-            height=900,
+            autosize=True,
             paper_bgcolor='white',
             font=dict(family="Arial, sans-serif", size=12, color="#2C3E50"),
             showlegend=True,

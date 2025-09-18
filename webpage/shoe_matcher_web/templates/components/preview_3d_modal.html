@@ -1,6 +1,6 @@
 <!-- 3D预览Modal -->
 <div class="modal fade" id="preview3DModal" tabindex="-1" aria-labelledby="preview3DModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl">
+    <div class="modal-dialog modal-xl" style="max-width: 90vw; max-height: 90vh;">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="preview3DModalLabel">
@@ -20,7 +20,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-0">
-                <div id="preview-3d-content" style="height: 600px;">
+                <div id="preview-3d-content" style="height: 600px; width: 100%; overflow: hidden; position: relative;">
                     <div class="d-flex align-items-center justify-content-center h-100">
                         <div class="text-center">
                             <i class="fas fa-spinner fa-spin fa-3x text-muted mb-3"></i>

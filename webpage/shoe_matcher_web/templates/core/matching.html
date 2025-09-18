@@ -48,7 +48,7 @@
                             请先管理粗胚库
                         </div>
                     </div>
-                    <button class="btn btn-success w-100" data-bs-toggle="modal" data-bs-target="#blankManageModal">
+                    <button class="btn btn-success w-100" id="manage-blank-library-btn">
                         <i class="fas fa-database me-2"></i>管理粗胚库
                     </button>
                 </div>
@@ -195,8 +195,16 @@
         </div>
     </div>
 </div>
+
+<!-- 包含分类管理Modal -->
+{% include 'components/category_manage_modal.html' %}
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/category-management.css' %}">
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'js/category-management.js' %}"></script>
 <script src="{% static 'js/matching.js' %}"></script>
 {% endblock %}

@@ -11,6 +11,7 @@ urlpatterns = [
     path('', views.BlankListCreateAPIView.as_view(), name='blank_list_create'),
     path('<int:pk>/', views.BlankDetailAPIView.as_view(), name='blank_detail'),
     path('categories/', views.CategoryListCreateAPIView.as_view(), name='category_list_create'),
+    path('categories/<int:pk>/', views.CategoryDetailAPIView.as_view(), name='category_detail'),
 ]
 
 

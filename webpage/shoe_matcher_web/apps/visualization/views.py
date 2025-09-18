@@ -82,7 +82,8 @@ def preview_3d_api(request, model_id):
             if format_type == 'html':
                 html_content = fig.to_html(
                     include_plotlyjs='cdn',
-                    div_id=f'{model_type}_preview_{model_id}'
+                    div_id=f'{model_type}_preview_{model_id}',
+                    config={'responsive': True, 'displayModeBar': True}
                 )
                 
                 result_data = {
