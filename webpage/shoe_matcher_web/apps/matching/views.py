@@ -10,6 +10,7 @@ from django.utils import timezone
 from .models import MatchingTask
 from .serializers import (
     MatchingTaskSerializer, 
+    MatchingTaskListSerializer,
     StartMatchingSerializer,
     MatchingStatusSerializer,
     MatchingResultSerializer
@@ -116,13 +117,35 @@ def matching_result_api(request, task_id):
                 'message': '任务尚未完成'
             }, status=status.HTTP_400_BAD_REQUEST)
         
+        # 在summary中添加处理时间
+        summary = task.summary_data.copy()
+        summary['processing_time'] = task.processing_time
+        
+        # 获取鞋模信息
+        shoe_model_name = task.shoe_model.name if task.shoe_model else '未知鞋模'
+        
+        # 构建参数信息
+        parameters = {
+            'clearance': task.clearance,
+            'threshold': task.threshold,
+            'auto_scale': task.enable_scaling,
+            'multi_orientation': task.enable_multi_start,
+            'max_results': 10  # 默认值
+        }
+        
         return Response({
             'success': True,
             'data': {
                 'task_id': task.task_id,
                 'status': task.status,
+                'created_at': task.created_at.isoformat() if task.created_at else None,
+                'completed_at': task.completed_at.isoformat() if task.completed_at else None,
+                'shoe_model_name': shoe_model_name,
+                'clearance': task.clearance,
+                'threshold': task.threshold,
+                'parameters': parameters,
                 'results': task.result_data.get('results', []),
-                'summary': task.summary_data
+                'summary': summary
             }
         })
         
@@ -137,7 +160,7 @@ def matching_result_api(request, task_id):
 class MatchingHistoryAPIView(generics.ListAPIView):
     """匹配历史API"""
     queryset = MatchingTask.objects.all()
-    serializer_class = MatchingTaskSerializer
+    serializer_class = MatchingTaskListSerializer  # 使用列表序列化器
     
     def list(self, request, *args, **kwargs):
         """获取匹配历史列表"""

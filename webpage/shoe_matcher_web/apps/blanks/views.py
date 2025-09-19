@@ -28,7 +28,7 @@ class BlankListCreateAPIView(generics.ListCreateAPIView):
         try:
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
-            blank = serializer.save()
+            blank = serializer.save(is_active=True)  # 确保新创建的粗胚是活跃状态
             
             # 异步处理3DM文件
             from .tasks import process_blank_file

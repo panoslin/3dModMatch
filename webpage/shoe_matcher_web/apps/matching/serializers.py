@@ -5,12 +5,26 @@
 from rest_framework import serializers
 from .models import MatchingTask
 from apps.shoes.serializers import ShoeModelSerializer
+from apps.shoes.models import ShoeModel
 from apps.blanks.serializers import BlankCategorySerializer
+
+
+class ShoeModelSimpleSerializer(serializers.ModelSerializer):
+    """简化的鞋模序列化器（不包含HTML预览）"""
+    dimensions = serializers.ReadOnlyField()
+    file_size_mb = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = ShoeModel
+        fields = [
+            'id', 'name', 'file_size_mb', 'dimensions',
+            'vertex_count', 'face_count', 'is_processed'
+        ]
 
 
 class MatchingTaskSerializer(serializers.ModelSerializer):
     """匹配任务序列化器"""
-    shoe_model_data = ShoeModelSerializer(
+    shoe_model_data = ShoeModelSimpleSerializer(
         source='shoe_model', 
         read_only=True
     )
@@ -99,6 +113,31 @@ class MatchingStatusSerializer(serializers.Serializer):
     progress = serializers.IntegerField()
     current_step = serializers.CharField()
     estimated_remaining = serializers.IntegerField(required=False)
+
+
+class MatchingTaskListSerializer(serializers.ModelSerializer):
+    """匹配任务列表序列化器（用于历史记录，不包含结果数据）"""
+    shoe_model_name = serializers.CharField(
+        source='shoe_model.name', 
+        read_only=True
+    )
+    category_count = serializers.SerializerMethodField()
+    candidate_count = serializers.ReadOnlyField()
+    passed_count = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = MatchingTask
+        fields = [
+            'id', 'task_id', 'shoe_model_name',
+            'category_count', 'clearance', 'threshold',
+            'status', 'progress', 'processing_time',
+            'candidate_count', 'passed_count',
+            'created_at', 'completed_at'
+        ]
+    
+    def get_category_count(self, obj):
+        """获取选中的分类数量"""
+        return obj.selected_categories.count()
 
 
 class MatchingResultSerializer(serializers.Serializer):

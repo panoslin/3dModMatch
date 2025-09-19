@@ -44,9 +44,43 @@ INSTALLED_APPS = INSTALLED_APPS + [
     'django_extensions',
 ]
 
-# Docker环境日志配置
+# Docker环境日志配置 - 添加详细的匹配和鞋模处理日志
 LOGGING['handlers']['console']['level'] = 'INFO'
-LOGGING['loggers']['apps']['level'] = 'INFO'
+LOGGING['loggers']['apps']['level'] = 'DEBUG'
+
+# 添加专门的日志处理器
+LOGGING['handlers']['matching_file'] = {
+    'level': 'DEBUG',
+    'class': 'logging.FileHandler',
+    'filename': '/app/logs/matching.log',
+    'formatter': 'verbose',
+}
+
+LOGGING['handlers']['shoes_file'] = {
+    'level': 'DEBUG',
+    'class': 'logging.FileHandler',
+    'filename': '/app/logs/shoes.log',
+    'formatter': 'verbose',
+}
+
+# 添加专门的logger
+LOGGING['loggers']['apps.matching.tasks'] = {
+    'handlers': ['matching_file', 'console'],
+    'level': 'DEBUG',
+    'propagate': False,
+}
+
+LOGGING['loggers']['apps.shoes.tasks'] = {
+    'handlers': ['shoes_file', 'console'],
+    'level': 'DEBUG',
+    'propagate': False,
+}
+
+LOGGING['loggers']['utils.hybrid_integration'] = {
+    'handlers': ['matching_file', 'console'],
+    'level': 'DEBUG',
+    'propagate': False,
+}
 
 # 确保logs目录存在
 import os

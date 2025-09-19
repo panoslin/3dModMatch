@@ -21,40 +21,62 @@ def process_shoe_file(shoe_id):
     
     try:
         shoe = ShoeModel.objects.get(id=shoe_id)
+        logger.info(f"开始处理鞋模 {shoe_id}: {shoe.name}, 文件: {shoe.file.path}")
+        
         shoe.processing_status = 'processing'
         shoe.save()
+        
+        # 验证文件存在
+        if not os.path.exists(shoe.file.path):
+            raise FileNotFoundError(f"鞋模文件不存在: {shoe.file.path}")
+        
+        file_size = os.path.getsize(shoe.file.path)
+        logger.info(f"文件大小: {file_size} bytes")
         
         # 导入enhanced_3dm_renderer
         try:
             from utils.enhanced_3dm_renderer import Enhanced3DRenderer
+            logger.info("Enhanced3DRenderer 导入成功")
             
             # 处理3DM文件
             renderer = Enhanced3DRenderer()
+            logger.info("开始读取3DM文件...")
             data = renderer.read_3dm(shoe.file.path)
+            logger.info(f"3DM文件读取完成: success={data.success}")
             
             if data.success:
                 # 更新几何信息
-                shoe.volume = data.stats.get('volume', 0)
-                shoe.bounding_box = data.stats.get('bounds', {})
-                shoe.vertex_count = data.stats.get('vertex_count', 0)
-                shoe.face_count = data.stats.get('face_count', 0)
+                stats = data.stats
+                shoe.volume = stats.get('volume', 0)
+                shoe.bounding_box = stats.get('bounds', {})
+                shoe.vertex_count = stats.get('vertex_count', 0)
+                shoe.face_count = stats.get('face_count', 0)
+                
+                logger.info(f"几何信息提取完成:")
+                logger.info(f"  - 体积: {shoe.volume} mm³")
+                logger.info(f"  - 顶点数: {shoe.vertex_count}")
+                logger.info(f"  - 面数: {shoe.face_count}")
                 
                 # 生成预览HTML
+                logger.info("开始生成预览HTML...")
                 fig = renderer.create_figure(data)
                 if fig:
                     shoe.preview_html = fig.to_html(
                         include_plotlyjs='cdn',
                         div_id=f'shoe_preview_{shoe.id}'
                     )
+                    logger.info(f"预览HTML生成成功: 长度={len(shoe.preview_html)} 字符")
+                else:
+                    logger.warning("预览HTML生成失败")
                 
                 shoe.processing_status = 'completed'
                 shoe.is_processed = True
                 
-                logger.info(f"Successfully processed shoe {shoe_id}: {shoe.name}")
+                logger.info(f"鞋模处理完成: {shoe_id} ({shoe.name})")
                 
             else:
                 shoe.processing_status = 'failed'
-                logger.error(f"Failed to process shoe {shoe_id}: Invalid 3DM data")
+                logger.error(f"鞋模处理失败: {shoe_id}, 3DM数据无效: {data.error if hasattr(data, 'error') else '未知错误'}")
                 
         except ImportError as e:
             shoe.processing_status = 'failed'

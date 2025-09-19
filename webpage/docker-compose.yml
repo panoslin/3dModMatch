@@ -138,6 +138,7 @@ services:
       - ./shoe_matcher_web/media:/app/media
       - ./logs:/app/logs
       - ./results:/app/results
+      - ./temp:/app/temp
       # Docker socket用于调用匹配容器
       - /var/run/docker.sock:/var/run/docker.sock
     environment:

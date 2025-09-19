@@ -100,6 +100,7 @@ class HybridMatcherService:
             logger.info(f"执行匹配命令: {' '.join(cmd)}")
             
             # 执行命令
+            logger.info(f"开始执行Docker命令，超时时间: 1800秒")
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -107,12 +108,22 @@ class HybridMatcherService:
                 timeout=1800  # 30分钟超时
             )
             
+            logger.info(f"Docker命令执行完成: returncode={result.returncode}")
+            if result.stdout:
+                logger.info(f"Docker stdout: {result.stdout[:1000]}...")  # 只记录前1000字符
+            if result.stderr:
+                logger.info(f"Docker stderr: {result.stderr[:1000]}...")  # 只记录前1000字符
+            
             if result.returncode == 0:
                 logger.info("匹配执行成功")
+                # 不在这里解析结果，让任务层来处理
+                logger.info(f"Docker命令执行成功，将结果解析交给任务层处理")
+                
                 return {
                     'success': True,
                     'stdout': result.stdout,
-                    'stderr': result.stderr
+                    'stderr': result.stderr,
+                    'output_dir': output_dir  # 传递输出目录给任务层
                 }
             else:
                 logger.error(f"匹配执行失败: {result.stderr}")
@@ -137,9 +148,28 @@ class HybridMatcherService:
     
     def build_docker_command(self, target_file, candidates_dir, output_dir, params):
         """构建Docker命令"""
+        # 在Docker环境中，需要将容器内路径转换为主机路径
+        if os.environ.get('DJANGO_ENVIRONMENT') == 'docker':
+            # 将容器内的 /app/media 路径转换为主机上的实际路径
+            # 根据docker-compose.yml: ./shoe_matcher_web/media:/app/media
+            if target_file.startswith('/app/media/'):
+                # 转换为主机路径：/app/media/xxx -> /root/3dModMatch/webpage/shoe_matcher_web/media/xxx
+                host_target_file = target_file.replace('/app/media/', '/root/3dModMatch/webpage/shoe_matcher_web/media/')
+                logger.info(f"目标文件路径转换: {target_file} -> {host_target_file}")
+            else:
+                host_target_file = target_file
+                logger.info(f"目标文件路径无需转换: {target_file}")
+            
+            # candidates_dir 和 output_dir 现在应该已经是主机路径了
+            logger.info(f"候选文件目录: {candidates_dir}")
+            logger.info(f"输出目录: {output_dir}")
+        else:
+            host_target_file = target_file
+            logger.info(f"非Docker环境，使用原路径: {target_file}")
+        
         cmd = [
             'docker', 'run', '--rm',
-            '-v', f'{target_file}:/app/target.3dm:ro',
+            '-v', f'{host_target_file}:/app/target.3dm:ro',
             '-v', f'{candidates_dir}:/app/candidates:ro',
             '-v', f'{output_dir}:/app/output',
             '--network', 'webpage_shoe_matcher_network',  # 使用同一网络
@@ -159,6 +189,11 @@ class HybridMatcherService:
             # 暂时不生成热图
             # '--export-heatmap-dir', '/app/output/heatmaps'
         ]
+        
+        logger.info(f"Docker volume挂载:")
+        logger.info(f"  - 目标文件: {host_target_file} -> /app/target.3dm")
+        logger.info(f"  - 候选目录: {candidates_dir} -> /app/candidates")
+        logger.info(f"  - 输出目录: {output_dir} -> /app/output")
         
         # 添加可选参数
         if params.get('enable_scaling', True):
@@ -190,10 +225,39 @@ class HybridMatcherService:
             # 处理结果数据
             processed_results = []
             for result in results:
+                # 计算覆盖率 - 基于间隙数据估算有多少百分比的点在2mm以内
+                # 使用百分位数据进行插值计算
+                clearance_threshold = 2.0  # 2mm阈值
+                
+                p01 = result.get('p01_clearance', 0)
+                p05 = result.get('p05_clearance', 0)
+                p10 = result.get('p10_clearance', 0)
+                p15 = result.get('p15_clearance', 0)
+                p20 = result.get('p20_clearance', 0)
+                
+                # 根据百分位数据估算覆盖率
+                if p20 <= clearance_threshold:
+                    inside_ratio = 0.80  # 至少80%的点在阈值内
+                elif p15 <= clearance_threshold:
+                    inside_ratio = 0.85  # 约85%的点在阈值内
+                elif p10 <= clearance_threshold:
+                    inside_ratio = 0.90  # 约90%的点在阈值内
+                elif p05 <= clearance_threshold:
+                    # 在5%到10%之间插值
+                    ratio = (clearance_threshold - p05) / (p10 - p05) if p10 > p05 else 0.5
+                    inside_ratio = 0.95 - ratio * 0.05
+                elif p01 <= clearance_threshold:
+                    # 在1%到5%之间插值
+                    ratio = (clearance_threshold - p01) / (p05 - p01) if p05 > p01 else 0.5
+                    inside_ratio = 0.99 - ratio * 0.04
+                else:
+                    # 即使P01也大于阈值，说明覆盖率很高（>99%）
+                    inside_ratio = 0.99
+                
                 processed_result = {
                     'blank_name': result.get('name', ''),
                     'blank_path': result.get('path', ''),
-                    'inside_ratio': result.get('inside_ratio', 0.0),
+                    'inside_ratio': inside_ratio,  # 使用计算的覆盖率
                     'volume_ratio': result.get('volume_ratio', 0.0),
                     'min_clearance': result.get('min_clearance', 0.0),
                     'p15_clearance': result.get('p15_clearance', 0.0),

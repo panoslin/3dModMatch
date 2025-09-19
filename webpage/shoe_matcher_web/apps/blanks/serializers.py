@@ -53,6 +53,18 @@ class BlankModelSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
     
+    def __init__(self, *args, **kwargs):
+        # 检查是否需要排除重字段
+        exclude_heavy_fields = kwargs.pop('exclude_heavy_fields', False)
+        super().__init__(*args, **kwargs)
+        
+        if exclude_heavy_fields:
+            # 为列表操作排除重字段
+            heavy_fields = ['preview_html', 'bounding_box']
+            for field_name in heavy_fields:
+                if field_name in self.fields:
+                    self.fields.pop(field_name)
+    
     def get_file_url(self, obj):
         """获取文件URL"""
         if obj.file:
