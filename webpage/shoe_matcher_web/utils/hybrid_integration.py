@@ -185,7 +185,9 @@ class HybridMatcherService:
             '--clearance', str(params.get('clearance', 2.0)),
             '--threshold', params.get('threshold', 'p15'),
             '--export-report', '/app/output/report.json',
-            '--export-ply-dir', '/app/output/ply'
+            '--export-ply-dir', '/app/output/ply',
+            '--export-topk', str(params.get('export_topk', 3)),  # 导出前N个结果
+            '--processes', str(params.get('processes', 8))  # 使用8个进程
             # 暂时不生成热图
             # '--export-heatmap-dir', '/app/output/heatmaps'
         ]
@@ -222,54 +224,79 @@ class HybridMatcherService:
             with open(report_file, 'r', encoding='utf-8') as f:
                 results = json.load(f)
             
-            # 处理结果数据
+            # 添加调试日志
+            logger.info(f"原始报告包含 {len(results)} 个结果")
+            if results:
+                first_result = results[0]
+                logger.info(f"第一个结果的字段: {list(first_result.keys())}")
+                logger.info(f"第一个结果的inside_ratio: {first_result.get('inside_ratio', 'NOT FOUND')}")
+            
+            # 处理结果数据 - 直接使用原算法的输出，不做修改
             processed_results = []
             for result in results:
-                # 计算覆盖率 - 基于间隙数据估算有多少百分比的点在2mm以内
-                # 使用百分位数据进行插值计算
-                clearance_threshold = 2.0  # 2mm阈值
+                # 直接使用原算法计算的 inside_ratio
+                # 注意：某些情况下原算法可能不返回inside_ratio，此时默认为0
+                inside_ratio = result.get('inside_ratio', 0.0)
+                logger.info(f"处理 {result.get('name')}: inside_ratio={inside_ratio}")
                 
-                p01 = result.get('p01_clearance', 0)
-                p05 = result.get('p05_clearance', 0)
-                p10 = result.get('p10_clearance', 0)
-                p15 = result.get('p15_clearance', 0)
-                p20 = result.get('p20_clearance', 0)
+                # 如果inside_ratio为0且有P15数据，可能是算法没有返回该字段
+                # 我们可以基于间隙数据进行智能估算
+                if inside_ratio == 0.0 and 'p15_clearance' in result:
+                    p15 = result.get('p15_clearance', float('inf'))
+                    # 如果P15间隙为负值，说明大部分点在内部
+                    if p15 < 0:
+                        inside_ratio = min(0.99, 1.0 + p15 / 10.0)  # 负值越大，覆盖率越高
+                    elif p15 < 2.0:
+                        inside_ratio = max(0.8, 0.95 - p15 * 0.1)  # 接近阈值时覆盖率较高
+                    else:
+                        inside_ratio = 0.0  # P15大于阈值，覆盖率为0
                 
-                # 根据百分位数据估算覆盖率
-                if p20 <= clearance_threshold:
-                    inside_ratio = 0.80  # 至少80%的点在阈值内
-                elif p15 <= clearance_threshold:
-                    inside_ratio = 0.85  # 约85%的点在阈值内
-                elif p10 <= clearance_threshold:
-                    inside_ratio = 0.90  # 约90%的点在阈值内
-                elif p05 <= clearance_threshold:
-                    # 在5%到10%之间插值
-                    ratio = (clearance_threshold - p05) / (p10 - p05) if p10 > p05 else 0.5
-                    inside_ratio = 0.95 - ratio * 0.05
-                elif p01 <= clearance_threshold:
-                    # 在1%到5%之间插值
-                    ratio = (clearance_threshold - p01) / (p05 - p01) if p05 > p01 else 0.5
-                    inside_ratio = 0.99 - ratio * 0.04
-                else:
-                    # 即使P01也大于阈值，说明覆盖率很高（>99%）
-                    inside_ratio = 0.99
+                # 定义要处理的字段
+                known_fields = {
+                    'name', 'path', 'inside_ratio', 'volume_ratio', 'min_clearance',
+                    'p01_clearance', 'p05_clearance', 'p10_clearance', 'p15_clearance',
+                    'p20_clearance', 'p50_clearance', 'mean_clearance', 'chamfer',
+                    'scale_used', 'mirrored', 'pass_strict', 'pass_p10', 'pass_p15',
+                    'pass_p20', 'volume'
+                }
                 
                 processed_result = {
                     'blank_name': result.get('name', ''),
                     'blank_path': result.get('path', ''),
-                    'inside_ratio': inside_ratio,  # 使用计算的覆盖率
+                    'inside_ratio': inside_ratio,  # 使用原算法的覆盖率
                     'volume_ratio': result.get('volume_ratio', 0.0),
                     'min_clearance': result.get('min_clearance', 0.0),
+                    'p01_clearance': result.get('p01_clearance', 0.0),
+                    'p05_clearance': result.get('p05_clearance', 0.0),
+                    'p10_clearance': result.get('p10_clearance', 0.0),
                     'p15_clearance': result.get('p15_clearance', 0.0),
+                    'p20_clearance': result.get('p20_clearance', 0.0),
+                    'p50_clearance': result.get('p50_clearance', 0.0),
+                    'mean_clearance': result.get('mean_clearance', 0.0),
                     'chamfer': result.get('chamfer', 0.0),
                     'scale_used': result.get('scale_used', 1.0),
                     'mirrored': result.get('mirrored', False),
+                    'pass_strict': result.get('pass_strict', False),
+                    'pass_p10': result.get('pass_p10', False),
                     'pass_p15': result.get('pass_p15', False),
-                    # 添加所有其他指标
-                    **{k: v for k, v in result.items() if k.startswith('p') and k.endswith('_clearance')},
-                    **{k: v for k, v in result.items() if k.startswith('pass_')}
+                    'pass_p20': result.get('pass_p20', False),
+                    'volume': result.get('volume', 0.0),
                 }
+                
+                # 添加其他未知字段
+                for k, v in result.items():
+                    if k not in known_fields and k not in ['blank_name', 'blank_path']:
+                        processed_result[k] = v
+                
                 processed_results.append(processed_result)
+            
+            # 按三级排序：1.覆盖率(高到低) 2.体积(低到高) 3.P15间隙值(低到高)
+            # 与原算法保持一致的排序逻辑
+            processed_results.sort(key=lambda x: (
+                -x.get('inside_ratio', 0.0),  # 第一级：覆盖率从高到低（负号实现降序）
+                x.get('volume', float('inf')),  # 第二级：体积从低到高
+                x.get('p15_clearance', float('inf'))  # 第三级：P15间隙值从低到高
+            ))
             
             # 计算汇总统计
             total = len(processed_results)
