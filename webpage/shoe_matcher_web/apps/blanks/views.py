@@ -8,6 +8,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from django.shortcuts import get_object_or_404
 from .models import BlankModel, BlankCategory
 from .serializers import BlankModelSerializer, BlankCategorySerializer
+from .pagination import BlankListPagination
 
 
 class BlankListCreateAPIView(generics.ListCreateAPIView):
@@ -15,6 +16,7 @@ class BlankListCreateAPIView(generics.ListCreateAPIView):
     queryset = BlankModel.objects.filter(is_active=True)
     serializer_class = BlankModelSerializer
     parser_classes = (MultiPartParser, FormParser)
+    pagination_class = BlankListPagination
     
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -22,6 +24,7 @@ class BlankListCreateAPIView(generics.ListCreateAPIView):
         if category_id:
             queryset = queryset.filter(categories__id=category_id)
         return queryset
+    
     
     def create(self, request, *args, **kwargs):
         """创建新的粗胚"""

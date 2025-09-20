@@ -116,6 +116,24 @@ class MatchingTask(BaseModel):
         verbose_name="热图目录路径"
     )
     
+    # 热力图生成状态
+    HEATMAP_STATUS_CHOICES = [
+        ('not_started', '未开始'),
+        ('generating', '生成中'),
+        ('completed', '已完成'),
+        ('failed', '生成失败'),
+    ]
+    heatmap_status = models.CharField(
+        max_length=20,
+        choices=HEATMAP_STATUS_CHOICES,
+        default='not_started',
+        verbose_name="热力图状态"
+    )
+    heatmap_data = models.JSONField(
+        default=dict,
+        verbose_name="热力图数据"
+    )
+    
     class Meta:
         verbose_name = "匹配任务"
         verbose_name_plural = "匹配任务"

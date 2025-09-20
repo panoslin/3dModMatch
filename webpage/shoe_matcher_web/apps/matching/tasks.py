@@ -208,6 +208,14 @@ def run_matching_task(task_id):
                 
                 logger.info(f"Matching task {task.task_id} completed successfully")
                 
+                # 触发热力图生成任务
+                try:
+                    from apps.matching.heatmap_tasks import generate_heatmaps_task
+                    generate_heatmaps_task.delay(task.task_id, top_k=4)
+                    logger.info(f"已触发热力图生成任务: {task.task_id}")
+                except Exception as e:
+                    logger.error(f"触发热力图生成任务失败: {e}")
+                
             else:
                 task.status = 'failed'
                 task.current_step = f'匹配失败: {result["error"]}'
@@ -255,6 +263,164 @@ def run_matching_task(task_id):
             task.save()
         except:
             pass
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task(bind=True)
+def generate_heatmaps_task(self, task_id: str, top_k: int = 4):
+    """
+    异步生成热力图任务
+    
+    Args:
+        task_id: 匹配任务ID
+        top_k: 生成前K个结果的热力图，默认4个
+    """
+    # 直接在这里实现，避免参数传递问题
+    from apps.matching.models import MatchingTask
+    from apps.matching.heatmap_tasks import generate_heatmap_locally
+    from django.conf import settings
+    from pathlib import Path
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # 获取任务
+        task = MatchingTask.objects.get(task_id=task_id)
+        
+        if task.status != 'completed':
+            logger.warning(f"任务 {task_id} 未完成，无法生成热力图")
+            return {'success': False, 'message': '匹配任务未完成'}
+        
+        results = task.result_data.get('results', [])
+        if not results:
+            return {'success': False, 'message': '没有匹配结果'}
+        
+        # 更新状态
+        task.heatmap_status = 'generating'
+        task.heatmap_data = {'progress': 0, 'message': '开始生成热力图...'}
+        task.save()
+        
+        # 准备输出目录
+        heatmap_dir = Path(settings.MEDIA_ROOT) / 'heatmaps' / task_id
+        heatmap_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 获取鞋模文件路径
+        target_path = Path(settings.MEDIA_ROOT) / task.shoe_model.file.name
+        
+        # 生成热力图
+        generated_heatmaps = []
+        total_to_generate = min(top_k, len(results))
+        
+        for i, result in enumerate(results[:total_to_generate]):
+            try:
+                # 更新进度
+                progress = int((i / total_to_generate) * 100)
+                task.heatmap_data = {
+                    'progress': progress,
+                    'message': f'正在生成第 {i+1}/{total_to_generate} 个热力图...'
+                }
+                task.save()
+                
+                # 获取粗胚路径
+                blank_path = result.get('blank_path') or result.get('path')
+                if not blank_path:
+                    continue
+                    
+                # 处理路径映射
+                if '/app/candidates/' in str(blank_path):
+                    blank_name = Path(blank_path).name
+                    possible_paths = [
+                        Path(settings.MEDIA_ROOT) / 'blanks' / '2025' / '09' / blank_name,
+                        Path(settings.MEDIA_ROOT) / 'blanks' / blank_name,
+                        Path('/root/3dModMatch/candidates') / blank_name,
+                    ]
+                    blank_path = None
+                    for p in possible_paths:
+                        if p.exists():
+                            blank_path = p
+                            break
+                    if not blank_path:
+                        continue
+                
+                # 生成热力图
+                blank_name = result.get('blank_name', f'result_{i+1}')
+                # 清理文件名中的.3dm后缀
+                if blank_name.endswith('.3dm'):
+                    blank_name = blank_name[:-4]
+                heatmap_filename = f"{i+1:02d}_{blank_name}_heatmap.html"
+                heatmap_path = heatmap_dir / heatmap_filename
+                
+                # 使用Docker运行热力图生成
+                import subprocess
+                import json
+                
+                # 准备Docker命令
+                docker_cmd = [
+                    'docker', 'run', '--rm',
+                    '-v', f'{target_path.parent}:/input_target',
+                    '-v', f'{blank_path.parent}:/input_blank',
+                    '-v', f'{heatmap_dir}:/output',
+                    'panoslin/shoe_matcher_hybrid:latest',
+                    'python', '/app/python/heatmap_worker.py',
+                    f'/input_target/{target_path.name}',
+                    f'/input_blank/{blank_path.name}',
+                    json.dumps(result),
+                    f'/output/{heatmap_filename}'
+                ]
+                
+                logger.info(f"运行Docker生成热力图: {heatmap_filename}")
+                try:
+                    result_proc = subprocess.run(
+                        docker_cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=60
+                    )
+                    success = result_proc.returncode == 0 and heatmap_path.exists()
+                    if not success:
+                        logger.error(f"Docker热力图生成失败: {result_proc.stderr}")
+                except subprocess.TimeoutExpired:
+                    logger.error("Docker热力图生成超时")
+                    success = False
+                except Exception as e:
+                    logger.error(f"Docker执行失败: {e}")
+                    success = False
+                
+                if success and heatmap_path.exists():
+                    relative_path = f'heatmaps/{task_id}/{heatmap_filename}'
+                    generated_heatmaps.append({
+                        'index': i,
+                        'blank_name': blank_name,
+                        'filename': heatmap_filename,
+                        'path': relative_path,
+                        'url': f'/media/{relative_path}'
+                    })
+                    logger.info(f"热力图生成成功: {heatmap_filename}")
+                    
+            except Exception as e:
+                logger.error(f"生成热力图 {i+1} 时出错: {e}")
+                continue
+        
+        # 更新任务状态
+        if generated_heatmaps:
+            task.heatmap_status = 'completed'
+            task.heatmap_data = {
+                'progress': 100,
+                'message': f'成功生成 {len(generated_heatmaps)} 个热力图',
+                'heatmaps': generated_heatmaps
+            }
+            task.heatmap_dir = str(heatmap_dir)
+            task.save()
+            return {'success': True, 'heatmaps': generated_heatmaps}
+        else:
+            task.heatmap_status = 'failed'
+            task.heatmap_data = {'error': '无法生成热力图'}
+            task.save()
+            return {'success': False, 'message': '热力图生成失败'}
+            
+    except Exception as e:
+        logger.error(f"热力图生成任务失败: {e}")
         return {'success': False, 'error': str(e)}
 
 

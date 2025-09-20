@@ -47,11 +47,20 @@ class ShoeListAPIView(generics.ListAPIView):
     queryset = ShoeModel.objects.filter(is_processed=True)
     serializer_class = ShoeModelSerializer
     
+    
     def list(self, request, *args, **kwargs):
         """获取鞋模列表"""
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
+        queryset = self.filter_queryset(self.get_queryset())
         
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response({
+                'success': True,
+                'data': serializer.data
+            })
+        
+        serializer = self.get_serializer(queryset, many=True)
         return Response({
             'success': True,
             'data': serializer.data

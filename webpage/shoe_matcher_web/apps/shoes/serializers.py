@@ -32,6 +32,19 @@ class ShoeModelSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
     
+    def to_representation(self, instance):
+        """Override to exclude heavy fields in list views"""
+        data = super().to_representation(instance)
+        
+        # Always remove heavy fields for API responses
+        # These can be fetched separately if needed
+        if 'preview_html' in data:
+            del data['preview_html']
+        if 'bounding_box' in data:
+            del data['bounding_box']
+        
+        return data
+    
     def get_file_url(self, obj):
         """获取文件URL"""
         if obj.file:

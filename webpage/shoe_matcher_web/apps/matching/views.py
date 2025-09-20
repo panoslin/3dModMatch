@@ -192,3 +192,25 @@ class MatchingHistoryAPIView(generics.ListAPIView):
             'success': True,
             'data': serializer.data
         })
+
+
+@api_view(['GET'])
+def heatmap_status_api(request, task_id):
+    """获取热力图生成状态"""
+    try:
+        task = get_object_or_404(MatchingTask, task_id=task_id)
+        
+        return Response({
+            'success': True,
+            'data': {
+                'task_id': task.task_id,
+                'heatmap_status': task.heatmap_status,
+                'heatmap_data': task.heatmap_data
+            }
+        })
+    except Exception as e:
+        logger.error(f"获取热力图状态失败: {str(e)}")
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

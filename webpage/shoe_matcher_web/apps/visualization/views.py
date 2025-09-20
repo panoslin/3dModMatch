@@ -8,6 +8,7 @@ from rest_framework import status
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.core.cache import cache
+from django.conf import settings
 import hashlib
 import os
 import sys
@@ -152,7 +153,51 @@ def heatmap_api(request, task_id, result_index):
                 'message': '无效的结果索引'
             }, status=status.HTTP_400_BAD_REQUEST)
         
+        # 检查热力图生成状态
+        if task.heatmap_status == 'not_started':
+            # 触发热力图生成
+            from apps.matching.heatmap_tasks import generate_heatmaps_task
+            generate_heatmaps_task.delay(task.task_id, top_k=4)
+            return Response({
+                'success': False,
+                'error': 'heatmap_generating',
+                'message': '热力图正在生成中，请稍后重试'
+            }, status=status.HTTP_202_ACCEPTED)
+        
+        elif task.heatmap_status == 'generating':
+            return Response({
+                'success': False,
+                'error': 'heatmap_generating',
+                'message': '热力图正在生成中，请稍候'
+            }, status=status.HTTP_202_ACCEPTED)
+        
+        elif task.heatmap_status == 'failed':
+            return Response({
+                'success': False,
+                'error': 'heatmap_failed',
+                'message': '热力图生成失败'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
         # 检查热图文件
+        if not task.heatmap_dir and task.heatmap_status == 'completed':
+            # 尝试从heatmap_data中获取路径
+            heatmap_data = task.heatmap_data or {}
+            heatmaps = heatmap_data.get('heatmaps', [])
+            if result_index < len(heatmaps):
+                heatmap_info = heatmaps[result_index]
+                heatmap_path = Path(settings.MEDIA_ROOT) / heatmap_info.get('path', '')
+                if heatmap_path.exists():
+                    with open(heatmap_path, 'r', encoding='utf-8') as f:
+                        html_content = f.read()
+                    return Response({
+                        'success': True,
+                        'data': {
+                            'html': html_content,
+                            'result_info': results[result_index] if result_index < len(results) else {},
+                            'file_path': str(heatmap_path)
+                        }
+                    })
+        
         if not task.heatmap_dir:
             return Response({
                 'success': False,
