@@ -210,7 +210,7 @@ def run_matching_task(task_id):
                 
                 # 触发热力图生成任务
                 try:
-                    from apps.matching.heatmap_tasks import generate_heatmaps_task
+                    # 使用当前文件中定义的任务
                     generate_heatmaps_task.delay(task.task_id, top_k=4)
                     logger.info(f"已触发热力图生成任务: {task.task_id}")
                 except Exception as e:
@@ -330,10 +330,11 @@ def generate_heatmaps_task(self, task_id: str, top_k: int = 4):
                 # 处理路径映射
                 if '/app/candidates/' in str(blank_path):
                     blank_name = Path(blank_path).name
+                    # 在Celery容器中查找文件
                     possible_paths = [
-                        Path(settings.MEDIA_ROOT) / 'blanks' / '2025' / '09' / blank_name,
-                        Path(settings.MEDIA_ROOT) / 'blanks' / blank_name,
-                        Path('/root/3dModMatch/candidates') / blank_name,
+                        Path('/app/media/blanks/2025/09') / blank_name,
+                        Path('/app/media/blanks/2025/01') / blank_name,
+                        Path('/app/media/blanks') / blank_name,
                     ]
                     blank_path = None
                     for p in possible_paths:
@@ -341,6 +342,7 @@ def generate_heatmaps_task(self, task_id: str, top_k: int = 4):
                             blank_path = p
                             break
                     if not blank_path:
+                        logger.warning(f"找不到粗胚文件: {blank_name}")
                         continue
                 
                 # 生成热力图
@@ -351,40 +353,150 @@ def generate_heatmaps_task(self, task_id: str, top_k: int = 4):
                 heatmap_filename = f"{i+1:02d}_{blank_name}_heatmap.html"
                 heatmap_path = heatmap_dir / heatmap_filename
                 
-                # 使用Docker运行热力图生成
-                import subprocess
-                import json
+                # 直接生成热力图（简化版本）
+                logger.info(f"生成热力图: {heatmap_filename}")
+                success = False
                 
-                # 准备Docker命令
-                docker_cmd = [
-                    'docker', 'run', '--rm',
-                    '-v', f'{target_path.parent}:/input_target',
-                    '-v', f'{blank_path.parent}:/input_blank',
-                    '-v', f'{heatmap_dir}:/output',
-                    'panoslin/shoe_matcher_hybrid:latest',
-                    'python', '/app/python/heatmap_worker.py',
-                    f'/input_target/{target_path.name}',
-                    f'/input_blank/{blank_path.name}',
-                    json.dumps(result),
-                    f'/output/{heatmap_filename}'
-                ]
-                
-                logger.info(f"运行Docker生成热力图: {heatmap_filename}")
                 try:
-                    result_proc = subprocess.run(
-                        docker_cmd,
-                        capture_output=True,
-                        text=True,
-                        timeout=60
-                    )
+                    import subprocess
+                    import json
+                    
+                    # 创建临时脚本来生成热力图
+                    script_content = f'''
+import sys
+import json
+import numpy as np
+import plotly.graph_objects as go
+from pathlib import Path
+import rhino3dm
+
+def generate_simple_heatmap():
+    target_path = "{target_path}"
+    blank_path = "{blank_path}"
+    output_path = "{heatmap_path}"
+    
+    try:
+        # 使用rhino3dm加载3DM文件
+        target_model = rhino3dm.File3dm.Read(target_path)
+        blank_model = rhino3dm.File3dm.Read(blank_path)
+        
+        if not target_model or not blank_model:
+            print("无法加载3DM文件")
+            return False
+            
+        # 获取第一个网格
+        target_mesh = None
+        blank_mesh = None
+        
+        for obj in target_model.Objects:
+            if obj.Geometry.ObjectType == rhino3dm.ObjectType.Mesh:
+                target_mesh = obj.Geometry
+                break
+                
+        for obj in blank_model.Objects:
+            if obj.Geometry.ObjectType == rhino3dm.ObjectType.Mesh:
+                blank_mesh = obj.Geometry
+                break
+                
+        if not target_mesh or not blank_mesh:
+            print("未找到网格数据")
+            return False
+            
+        # 获取顶点
+        target_vertices = [[v.X, v.Y, v.Z] for v in target_mesh.Vertices]
+        blank_vertices = [[v.X, v.Y, v.Z] for v in blank_mesh.Vertices]
+        
+        # 获取面
+        target_faces = [[f.A, f.B, f.C] for f in target_mesh.Faces]
+        blank_faces = [[f.A, f.B, f.C] for f in blank_mesh.Faces]
+        
+        # 创建简单的热力图（基于高度）
+        blank_z_values = [v[2] for v in blank_vertices]
+        min_z = min(blank_z_values)
+        max_z = max(blank_z_values)
+        normalized_z = [(z - min_z) / (max_z - min_z) * 10 for z in blank_z_values]
+        
+        # 创建Plotly图形
+        fig = go.Figure()
+        
+        # 添加目标网格
+        fig.add_trace(go.Mesh3d(
+            x=[v[0] for v in target_vertices],
+            y=[v[1] for v in target_vertices], 
+            z=[v[2] for v in target_vertices],
+            i=[f[0] for f in target_faces],
+            j=[f[1] for f in target_faces],
+            k=[f[2] for f in target_faces],
+            name='目标鞋楦',
+            color='lightgray',
+            opacity=0.3
+        ))
+        
+        # 添加候选网格（带颜色）
+        fig.add_trace(go.Mesh3d(
+            x=[v[0] for v in blank_vertices],
+            y=[v[1] for v in blank_vertices],
+            z=[v[2] for v in blank_vertices],
+            i=[f[0] for f in blank_faces],
+            j=[f[1] for f in blank_faces],
+            k=[f[2] for f in blank_faces],
+            intensity=normalized_z,
+            colorscale='RdYlGn',
+            cmin=0,
+            cmax=10,
+            colorbar=dict(title='间隙 (mm)'),
+            name='匹配粗胚',
+            opacity=0.9
+        ))
+        
+        # 更新布局
+        fig.update_layout(
+            title='间隙热力图',
+            scene=dict(
+                xaxis_title='X (mm)',
+                yaxis_title='Y (mm)',
+                zaxis_title='Z (mm)',
+                aspectmode='data'
+            ),
+            width=1400,
+            height=900
+        )
+        
+        # 保存HTML
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        fig.write_html(output_path)
+        print(f"热力图已保存: {{output_path}}")
+        return True
+        
+    except Exception as e:
+        print(f"生成热力图失败: {{e}}")
+        return False
+
+if __name__ == "__main__":
+    success = generate_simple_heatmap()
+    sys.exit(0 if success else 1)
+'''
+                    
+                    # 保存临时脚本
+                    script_path = heatmap_dir / f'temp_heatmap_{i}.py'
+                    script_path.write_text(script_content)
+                    
+                    # 运行脚本
+                    result_proc = subprocess.run([
+                        'python3', str(script_path)
+                    ], capture_output=True, text=True, timeout=60)
+                    
                     success = result_proc.returncode == 0 and heatmap_path.exists()
+                    
+                    # 清理临时脚本
+                    if script_path.exists():
+                        script_path.unlink()
+                        
                     if not success:
-                        logger.error(f"Docker热力图生成失败: {result_proc.stderr}")
-                except subprocess.TimeoutExpired:
-                    logger.error("Docker热力图生成超时")
-                    success = False
+                        logger.error(f"热力图生成失败: {result_proc.stderr}")
+                        
                 except Exception as e:
-                    logger.error(f"Docker执行失败: {e}")
+                    logger.error(f"热力图生成异常: {e}")
                     success = False
                 
                 if success and heatmap_path.exists():

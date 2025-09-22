@@ -14,11 +14,11 @@
                         <!-- 文件上传区域 -->
                         <div class="upload-zone" id="shoe-upload-zone">
                             <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
-                            <h6>拖拽文件到此处或点击选择</h6>
-                            <p class="text-muted small">支持.3dm格式，最大100MB</p>
-                            <input type="file" id="shoe-file-input" accept=".3dm" style="display: none;">
+                            <h6>拖拽多个文件到此处或点击选择</h6>
+                            <p class="text-muted small">支持.3dm格式，最大100MB每个文件</p>
+                            <input type="file" id="shoe-file-input" accept=".3dm" multiple style="display: none;">
                             <button type="button" class="btn btn-outline-primary" id="select-shoe-file">
-                                选择文件
+                                选择多个文件
                             </button>
                         </div>
                         
@@ -26,14 +26,30 @@
                         <div id="shoe-file-info" class="mt-3 d-none">
                             <div class="card">
                                 <div class="card-body">
-                                    <h6 class="card-title">文件信息</h6>
-                                    <p class="card-text">
-                                        <strong>文件名:</strong> <span id="shoe-filename">--</span><br>
-                                        <strong>大小:</strong> <span id="shoe-filesize">--</span><br>
-                                        <strong>状态:</strong> <span id="shoe-status" class="badge bg-secondary">准备中</span>
-                                    </p>
-                                    <div class="progress mb-2" id="shoe-progress" style="display: none;">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <h6 class="card-title mb-0">
+                                            文件列表 
+                                            <span class="badge bg-primary" id="file-count-badge">0</span>
+                                        </h6>
+                                    </div>
+                                    
+                                    <!-- 多文件列表 -->
+                                    <div class="list-group list-group-flush" id="shoe-file-list">
+                                        <!-- 文件列表将通过JavaScript动态填充 -->
+                                    </div>
+                                    
+                                    <!-- 上传进度 -->
+                                    <div class="progress mt-3" id="shoe-progress" style="display: none;">
                                         <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                                    </div>
+                                    
+                                    <!-- 单文件信息（向后兼容） -->
+                                    <div id="single-file-info" class="d-none">
+                                        <p class="card-text">
+                                            <strong>文件名:</strong> <span id="shoe-filename">--</span><br>
+                                            <strong>大小:</strong> <span id="shoe-filesize">--</span><br>
+                                            <strong>状态:</strong> <span id="shoe-status" class="badge bg-secondary">准备中</span>
+                                        </p>
                                     </div>
                                 </div>
                             </div>
