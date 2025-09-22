@@ -264,44 +264,63 @@ def multi_start_alignment(Vc, Fc, Vt, Ft, n_starts=3, voxel=5.0, fpfh_radius=10.
     
     return best_result if best_result else param_sets[0]
 
-def compute_detailed_clearance_metrics(Vt, Ft, Vc_aligned, Fc, samples=120000):
+def compute_detailed_clearance_metrics(Vt, Ft, Vc_aligned, Fc, samples=120000, use_vertices=True):
     """
-    Compute comprehensive clearance metrics
-    """
-    # Standard clearance sampling
-    clear_result = cppcore.clearance_sampling(
-        Vt, Ft, Vc_aligned.astype(np.float64), Fc,
-        clearance=2.0, safety_delta=0.3, samples=samples
-    )
+    Compute comprehensive clearance metrics using sampling or all vertices.
     
-    # Use more samples for percentile calculation to get accurate statistics
-    detailed_result = cppcore.clearance_sampling(
-        Vt, Ft, Vc_aligned.astype(np.float64), Fc,
-        clearance=2.0, safety_delta=0.3, samples=50000  # More samples for percentiles
-    )
+    Args:
+        Vt, Ft: Target mesh vertices and faces
+        Vc_aligned, Fc: Aligned candidate mesh vertices and faces  
+        samples: Number of sample points for clearance calculation (ignored if use_vertices=True)
+        use_vertices: If True, use all vertices instead of sampling
+        
+    Returns:
+        dict: Detailed clearance metrics including percentiles
+    """
+    if use_vertices:
+        print(f"Using all vertices instead of sampling - most accurate approach")
+        # Use all vertices instead of sampling - most accurate approach
+        detailed_result = cppcore.clearance_vertex_based(
+            Vt, Ft, Vc_aligned.astype(np.float64), Fc,
+            clearance=2.0, safety_delta=0.3
+        )
+        clear_result = detailed_result  # Same result for both
+    else:
+        # Standard clearance sampling
+        clear_result = cppcore.clearance_sampling(
+            Vt, Ft, Vc_aligned.astype(np.float64), Fc,
+            clearance=2.0, safety_delta=0.3, samples=samples
+        )
+        
+        # Use more samples for percentile calculation to get accurate statistics
+        detailed_result = cppcore.clearance_sampling(
+            Vt, Ft, Vc_aligned.astype(np.float64), Fc,
+            clearance=2.0, safety_delta=0.3, samples=1600000  # More samples for percentiles
+        )
     
     # Copy the inside_ratio from detailed_result to clear_result
     # Ensure inside_ratio is always present
     inside_ratio = detailed_result.get('inside_ratio', 0.0)
     
-    # If inside_ratio is 0 but we have negative P01 clearance, estimate it
-    # Negative clearance means points are inside
-    if inside_ratio == 0.0 and 'p01_clearance' in clear_result:
-        p01 = clear_result.get('p01_clearance', 0)
-        if p01 < 0:
-            # Negative P01 means >99% points are inside
-            inside_ratio = 0.99
-        elif p01 < 2.0:
-            # Small positive P01 means most points are inside
-            inside_ratio = max(0.5, 1.0 - p01/10.0)
+    # # If inside_ratio is 0 but we have negative P01 clearance, estimate it
+    # # Negative clearance means points are inside
+    # if inside_ratio == 0.0 and 'p01_clearance' in clear_result:
+    #     p01 = clear_result.get('p01_clearance', 0)
+    #     if p01 < 0:
+    #         # Negative P01 means >99% points are inside
+    #         inside_ratio = 0.99
+    #     elif p01 < 2.0:
+    #         # Small positive P01 means most points are inside
+    #         inside_ratio = max(0.5, 1.0 - p01/10.0)
     
     clear_result['inside_ratio'] = inside_ratio
+    print(f"⚠️ Warning: Only {detailed_result.get('inside_ratio', 0.0):.1%} of target points are inside candidate")
     
-    # If not all points are inside, set clearances to 0 for points outside
-    if detailed_result.get('inside_ratio', 0.0) < 1.0:
-        print(f"⚠️ Warning: Only {detailed_result.get('inside_ratio', 0.0):.1%} of target points are inside candidate")
-        # For proper clearance, we need complete containment
-        clear_result['min_clearance'] = 0.0  # Set to 0 if not fully contained
+    # # If not all points are inside, set clearances to 0 for points outside
+    # if detailed_result.get('inside_ratio', 0.0) < 1.0:
+    #     print(f"⚠️ Warning: Only {detailed_result.get('inside_ratio', 0.0):.1%} of target points are inside candidate")
+    #     # For proper clearance, we need complete containment
+    #     clear_result['min_clearance'] = 0.0  # Set to 0 if not fully contained
     
     # Calculate percentiles using a proper surface sampling approach
     # Sample more points for accurate percentile calculation

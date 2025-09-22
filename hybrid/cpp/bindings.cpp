@@ -299,6 +299,58 @@ py::dict clearance_sampling(py::array_t<double> v_tgt, py::array_t<int> f_tgt,
                     "p01_clearance"_a = p01, "inside_ratio"_a = inside_ratio);
 }
 
+// 基于顶点的间隙检查 - 不使用采样，直接使用所有顶点
+py::dict clearance_vertex_based(py::array_t<double> v_tgt, py::array_t<int> f_tgt,
+                               py::array_t<double> v_cand, py::array_t<int> f_cand,
+                               double clearance, double safety_delta) {
+    auto mT = mesh_from_np(v_tgt, f_tgt);
+    auto mC = mesh_from_np(v_cand, f_cand);
+    
+    // 直接使用目标网格的所有顶点，不进行采样
+    auto pts = std::make_shared<geometry::PointCloud>();
+    pts->points_ = mT->vertices_;
+
+    t::geometry::TriangleMesh tmC = t::geometry::TriangleMesh::FromLegacy(*mC);
+    t::geometry::RaycastingScene scene; scene.AddTriangles(tmC);
+
+    std::vector<float> buf; buf.reserve(pts->points_.size() * 3);
+    for (auto &p : pts->points_) { buf.push_back((float)p.x()); buf.push_back((float)p.y()); buf.push_back((float)p.z()); }
+    core::Tensor q(buf, {(int64_t)pts->points_.size(), 3}, core::Float32);
+
+    auto sdist = scene.ComputeSignedDistance(q); // negative inside
+    auto inside = scene.ComputeOccupancy(q);
+
+    std::vector<float> sdv(sdist.GetDataPtr<float>(), sdist.GetDataPtr<float>() + sdist.NumElements());
+    std::vector<float> inv(inside.GetDataPtr<float>(), inside.GetDataPtr<float>() + inside.NumElements());
+
+    std::vector<double> inner; inner.reserve(sdv.size()); size_t inside_cnt = 0;
+    for (size_t i = 0; i < sdv.size(); ++i) {
+        // inv[i] > 0.5f means the point is INSIDE the candidate mesh
+        // sdv[i] is negative when inside, positive when outside
+        // For clearance, we want the absolute distance when inside
+        if (inv[i] > 0.5f) { 
+            inside_cnt++; 
+            // Use absolute value of signed distance as clearance
+            inner.push_back(std::abs((double)sdv[i])); 
+        }
+    }
+    double inside_ratio = (double)inside_cnt / std::max<size_t>(1, sdv.size());
+
+    double min_c = 0, mean_c = 0, p01 = 0; bool pass = false;
+    if (!inner.empty()) {
+        std::sort(inner.begin(), inner.end());
+        min_c = inner.front();  // Minimum clearance (smallest distance from target to candidate interior)
+        mean_c = std::accumulate(inner.begin(), inner.end(), 0.0) / inner.size();
+        size_t k = (size_t)std::floor(0.01 * inner.size());
+        if (k >= inner.size()) k = inner.size() - 1;
+        p01 = inner[k];
+        // Pass only if ALL vertices are inside (inside_ratio == 1.0) AND minimum clearance is sufficient
+        pass = (inside_ratio >= 0.999) && (min_c >= clearance);  // Allow 0.1% tolerance for numerical errors
+    }
+    return py::dict("pass"_a = pass, "min_clearance"_a = min_c, "mean_clearance"_a = mean_c,
+                    "p01_clearance"_a = p01, "inside_ratio"_a = inside_ratio);
+}
+
 // ----------------------------- 批量并行：对齐 + 采样 SDF -----------------------------
 
 py::list batch_align_and_check(py::array_t<double> v_tgt, py::array_t<int> f_tgt,
@@ -714,6 +766,9 @@ PYBIND11_MODULE(cppcore, m) {
     m.def("clearance_sampling", &clearance_sampling, "Sampling-based SDF clearance check",
           py::arg("v_tgt"), py::arg("f_tgt"), py::arg("v_cand"), py::arg("f_cand"),
           py::arg("clearance"), py::arg("safety_delta"), py::arg("samples") = 120000);
+    m.def("clearance_vertex_based", &clearance_vertex_based, "Vertex-based SDF clearance check (no sampling)",
+          py::arg("v_tgt"), py::arg("f_tgt"), py::arg("v_cand"), py::arg("f_cand"),
+          py::arg("clearance"), py::arg("safety_delta"));
     m.def("batch_align_and_check", &batch_align_and_check, "Batch align+check (parallel)",
           py::arg("v_tgt"), py::arg("f_tgt"), py::arg("V_cands"), py::arg("F_cands"),
           py::arg("voxel"), py::arg("fpfh_radius"), py::arg("icp_thr"),

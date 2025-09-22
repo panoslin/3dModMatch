@@ -330,8 +330,8 @@ def run_multiprocess_matcher(
     # 保存报告
     if export_report:
         Path(export_report).parent.mkdir(parents=True, exist_ok=True)
-        with open(export_report, 'w') as f:
-            json.dump(results, f, indent=2, default=str)
+        with open(export_report, 'w', encoding='utf-8') as f:
+            json.dump(results, f, indent=2, default=str, ensure_ascii=False)
         print(f"\n📊 Report saved: {export_report}")
     
     # 统计和总结

@@ -35,6 +35,18 @@ make -j$(nproc)
 echo "Installing..."
 sudo make install
 
+# Copy the compiled module to the correct Python path
+echo "Installing to Python path..."
+PYTHON_SITE_PACKAGES=$(python3 -c "import site; print(site.getsitepackages()[0])")
+echo "Python site-packages: $PYTHON_SITE_PACKAGES"
+
+if [ -f "cppcore.cpython-310-x86_64-linux-gnu.so" ]; then
+    sudo cp cppcore.cpython-310-x86_64-linux-gnu.so "$PYTHON_SITE_PACKAGES/cppcore.so"
+    echo "✓ Copied cppcore module to Python path"
+else
+    echo "✗ No cppcore module found in build directory"
+fi
+
 echo "=== Build Complete ==="
 echo "Executables created:"
 ls -la cppcore* 2>/dev/null || echo "No executables found"

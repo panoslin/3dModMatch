@@ -4,8 +4,8 @@
 cd /root/3dModMatch && 
 LD_PRELOAD=/usr/local/lib/libOpen3D.so \
 python3 hybrid/python/hybrid_matcher_multiprocess.py   \
---target "models/8669-37.3dm"   \
---candidates "8669-b003 大"   \
+--target "models/37大.3dm"   \
+--candidates "candidates"   \
 --clearance 2.0   \
 --no-scaling   \
 --enable-multi-start   \
