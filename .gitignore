@@ -38,7 +38,6 @@ MANIFEST
 db.sqlite3
 media/
 staticfiles/
-static/
 logs/
 .env
 .env.*
