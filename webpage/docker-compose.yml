@@ -43,7 +43,7 @@ services:
     # build:
       # context: ../hybrid
       # dockerfile: Dockerfile
-    image: panoslin/shoe_matcher_hybrid:latest
+    image: panoslin/shoe_matcher_hybrid:v1
     container_name: shoe_matcher_hybrid
     command: ["tail", "-f", "/dev/null"]  # 保持容器运行
     volumes:
@@ -75,7 +75,8 @@ services:
 
   # Django Web应用
   web:
-    build: .
+    # build: .
+    image: panoslin/3d-shoe-matcher-web:v1
     container_name: shoe_matcher_web
     ports:
       - "${WEB_PORT:-8000}:8000"
@@ -131,7 +132,8 @@ services:
 
   # Celery异步任务处理
   celery:
-    build: .
+    # build: .
+    image: panoslin/3d-shoe-matcher-web:v1
     container_name: shoe_matcher_celery
     command: ["celery"]
     volumes:
