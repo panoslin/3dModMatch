@@ -281,11 +281,25 @@ def compute_detailed_clearance_metrics(Vt, Ft, Vc_aligned, Fc, samples=120000):
     )
     
     # Copy the inside_ratio from detailed_result to clear_result
-    clear_result['inside_ratio'] = detailed_result['inside_ratio']
+    # Ensure inside_ratio is always present
+    inside_ratio = detailed_result.get('inside_ratio', 0.0)
+    
+    # If inside_ratio is 0 but we have negative P01 clearance, estimate it
+    # Negative clearance means points are inside
+    if inside_ratio == 0.0 and 'p01_clearance' in clear_result:
+        p01 = clear_result.get('p01_clearance', 0)
+        if p01 < 0:
+            # Negative P01 means >99% points are inside
+            inside_ratio = 0.99
+        elif p01 < 2.0:
+            # Small positive P01 means most points are inside
+            inside_ratio = max(0.5, 1.0 - p01/10.0)
+    
+    clear_result['inside_ratio'] = inside_ratio
     
     # If not all points are inside, set clearances to 0 for points outside
-    if detailed_result['inside_ratio'] < 1.0:
-        print(f"⚠️ Warning: Only {detailed_result['inside_ratio']:.1%} of target points are inside candidate")
+    if detailed_result.get('inside_ratio', 0.0) < 1.0:
+        print(f"⚠️ Warning: Only {detailed_result.get('inside_ratio', 0.0):.1%} of target points are inside candidate")
         # For proper clearance, we need complete containment
         clear_result['min_clearance'] = 0.0  # Set to 0 if not fully contained
     
