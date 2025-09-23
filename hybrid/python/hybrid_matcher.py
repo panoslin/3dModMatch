@@ -231,10 +231,44 @@ def compute_clearance_batch(args):
     return distances
 
 # ========== Optimization Functions ==========
-def multi_start_alignment(Vc, Fc, Vt, Ft, n_starts=3, voxel=5.0, fpfh_radius=10.0, icp_thr=15.0):
+def multi_start_alignment(Vc, Fc, Vt, Ft, n_starts=5, voxel=5.0, fpfh_radius=10.0, icp_thr=15.0, 
+                         use_robust=True, use_high_accuracy=False):
     """
     Try multiple initial alignments and pick the best one
+    
+    Args:
+        use_robust: If True, use the new robust alignment function with improved RANSAC parameters
+        use_high_accuracy: If True, use high-accuracy mode with increased sampling and iterations
     """
+    if use_high_accuracy:
+        # 使用高精度对齐函数，具有更高的采样量和迭代数
+        try:
+            result = cppcore.align_icp_high_accuracy(
+                Vc, Fc, Vt, Ft,
+                voxel=voxel, fpfh_radius=fpfh_radius, icp_thr=icp_thr,
+                initial_samples=150_000, chamfer_samples=75_000,
+                max_iterations=75_000, confidence=2_000, n_starts=7
+            )
+            result['attempt'] = 'high_accuracy'
+            return result
+        except Exception as e:
+            print(f"⚠️ High-accuracy alignment failed: {e}, falling back to robust method")
+            use_robust = True
+    
+    if use_robust:
+        # 使用新的稳健对齐函数，具有改进的 RANSAC 参数
+        try:
+            result = cppcore.align_icp_robust(
+                Vc, Fc, Vt, Ft,
+                voxel=voxel, fpfh_radius=fpfh_radius, icp_thr=icp_thr,
+                n_starts=n_starts, max_iterations=20000, confidence=800
+            )
+            result['attempt'] = 'robust'
+            return result
+        except Exception as e:
+            print(f"⚠️ Robust alignment failed: {e}, falling back to standard method")
+    
+    # 传统方法作为后备
     best_result = None
     best_score = float('inf')
     

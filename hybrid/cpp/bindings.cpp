@@ -78,7 +78,7 @@ static void est_normals(geometry::PointCloud &pcd, double radius) {
 }
 
 static Eigen::Matrix4d ransac(geometry::PointCloud &src, geometry::PointCloud &tgt,
-                              double radius, double voxel) {
+                              double radius, double voxel, int max_iterations=15000, int confidence=500) {
     est_normals(src, radius);
     est_normals(tgt, radius);
 
@@ -91,11 +91,13 @@ static Eigen::Matrix4d ransac(geometry::PointCloud &src, geometry::PointCloud &t
     std::vector<std::reference_wrapper<const pipelines::registration::CorrespondenceChecker>> checkers;
     auto checker = std::make_shared<pipelines::registration::CorrespondenceCheckerBasedOnDistance>(thr);
     checkers.push_back(*checker);
+    
+    // 更严格的 RANSAC 参数以提高稳定性
     auto result = pipelines::registration::RegistrationRANSACBasedOnFeatureMatching(
         src, tgt, *fsrc, *ftgt, true, thr,
         pipelines::registration::TransformationEstimationPointToPoint(false), 4,
         checkers,
-        pipelines::registration::RANSACConvergenceCriteria(8000, 1000));
+        pipelines::registration::RANSACConvergenceCriteria(max_iterations, confidence));
     return result.transformation_;
 }
 
@@ -247,6 +249,127 @@ py::dict align_icp_with_mirror(py::array_t<double> v_src, py::array_t<int> f_src
     for (int i = 0; i < 4; ++i) for (int j = 0; j < 4; ++j) r(i, j) = Tbest(i, j);
 
     return py::dict("T"_a = Tnp, "chamfer"_a = ch, "mirrored"_a = mirrored);
+}
+
+// 更稳健的多起点对齐函数
+py::dict align_icp_robust(py::array_t<double> v_src, py::array_t<int> f_src,
+                          py::array_t<double> v_tgt, py::array_t<int> f_tgt,
+                          double voxel, double fpfh_radius, double icp_thr, 
+                          int n_starts=5, int max_iterations=20000, int confidence=800) {
+    auto mS = mesh_from_np(v_src, f_src);
+    auto mT = mesh_from_np(v_tgt, f_tgt);
+    
+    Eigen::Matrix4d Tbest = Eigen::Matrix4d::Identity();
+    double best_score = std::numeric_limits<double>::infinity();
+    bool best_mirrored = false;
+    
+    // 尝试不同的参数组合
+    std::vector<std::pair<double, double>> param_pairs = {
+        {voxel, fpfh_radius},
+        {voxel * 0.8, fpfh_radius * 0.8},
+        {voxel * 1.2, fpfh_radius * 1.2},
+        {voxel * 0.6, fpfh_radius * 0.6},
+        {voxel * 1.5, fpfh_radius * 1.5}
+    };
+    
+    for (int attempt = 0; attempt < std::min(n_starts, (int)param_pairs.size()); ++attempt) {
+        auto [v, r] = param_pairs[attempt];
+        auto pT = sample_pcd(*mT, 50000)->VoxelDownSample(v);
+        
+        // 原始方向
+        auto pS0 = sample_pcd(*mS, 50000)->VoxelDownSample(v);
+        Eigen::Matrix4d T0 = icp(*pS0, *pT, ransac(*pS0, *pT, r, v, max_iterations, confidence), icp_thr);
+        auto Sa = *mS; Sa.Transform(T0);
+        double ch0 = chamfer(*sample_pcd(Sa, 20000), *sample_pcd(*mT, 20000));
+        
+        // 镜像方向
+        Eigen::Matrix4d M = Eigen::Matrix4d::Identity(); M(0, 0) = -1.0;
+        auto Sm = *mS; Sm.Transform(M);
+        auto pSm = sample_pcd(Sm, 50000)->VoxelDownSample(v);
+        Eigen::Matrix4d Tm = icp(*pSm, *pT, ransac(*pSm, *pT, r, v, max_iterations, confidence), icp_thr);
+        auto Sb = Sm; Sb.Transform(Tm);
+        double chm = chamfer(*sample_pcd(Sb, 20000), *sample_pcd(*mT, 20000));
+        
+        // 选择更好的结果
+        if (chm < ch0 && chm < best_score) {
+            Tbest = Tm * M;
+            best_score = chm;
+            best_mirrored = true;
+        } else if (ch0 < best_score) {
+            Tbest = T0;
+            best_score = ch0;
+            best_mirrored = false;
+        }
+    }
+    
+    py::array_t<double> Tnp({4, 4});
+    auto r = Tnp.mutable_unchecked<2>();
+    for (int i = 0; i < 4; ++i) for (int j = 0; j < 4; ++j) r(i, j) = Tbest(i, j);
+    
+    return py::dict("T"_a = Tnp, "chamfer"_a = best_score, "mirrored"_a = best_mirrored);
+}
+
+// 高精度对齐函数 - 通过提高采样量和迭代数来提升准确率
+py::dict align_icp_high_accuracy(py::array_t<double> v_src, py::array_t<int> f_src,
+                                 py::array_t<double> v_tgt, py::array_t<int> f_tgt,
+                                 double voxel, double fpfh_radius, double icp_thr,
+                                 int initial_samples=100000, int chamfer_samples=50000,
+                                 int max_iterations=50000, int confidence=1500, int n_starts=7) {
+    auto mS = mesh_from_np(v_src, f_src);
+    auto mT = mesh_from_np(v_tgt, f_tgt);
+    
+    Eigen::Matrix4d Tbest = Eigen::Matrix4d::Identity();
+    double best_score = std::numeric_limits<double>::infinity();
+    bool best_mirrored = false;
+    
+    // 更精细的参数组合，专注于高精度
+    std::vector<std::pair<double, double>> param_pairs = {
+        {voxel, fpfh_radius},                    // 标准参数
+        {voxel * 0.7, fpfh_radius * 0.7},       // 更精细
+        {voxel * 0.5, fpfh_radius * 0.5},       // 超精细
+        {voxel * 1.3, fpfh_radius * 1.3},       // 稍粗糙
+        {voxel * 0.9, fpfh_radius * 0.9},       // 微调
+        {voxel * 1.1, fpfh_radius * 1.1},       // 微调
+        {voxel * 0.3, fpfh_radius * 0.3}        // 极高精度
+    };
+    
+    for (int attempt = 0; attempt < std::min(n_starts, (int)param_pairs.size()); ++attempt) {
+        auto [v, r] = param_pairs[attempt];
+        
+        // 使用更高的采样量
+        auto pT = sample_pcd(*mT, initial_samples)->VoxelDownSample(v);
+        
+        // 原始方向
+        auto pS0 = sample_pcd(*mS, initial_samples)->VoxelDownSample(v);
+        Eigen::Matrix4d T0 = icp(*pS0, *pT, ransac(*pS0, *pT, r, v, max_iterations, confidence), icp_thr);
+        auto Sa = *mS; Sa.Transform(T0);
+        double ch0 = chamfer(*sample_pcd(Sa, chamfer_samples), *sample_pcd(*mT, chamfer_samples));
+        
+        // 镜像方向
+        Eigen::Matrix4d M = Eigen::Matrix4d::Identity(); M(0, 0) = -1.0;
+        auto Sm = *mS; Sm.Transform(M);
+        auto pSm = sample_pcd(Sm, initial_samples)->VoxelDownSample(v);
+        Eigen::Matrix4d Tm = icp(*pSm, *pT, ransac(*pSm, *pT, r, v, max_iterations, confidence), icp_thr);
+        auto Sb = Sm; Sb.Transform(Tm);
+        double chm = chamfer(*sample_pcd(Sb, chamfer_samples), *sample_pcd(*mT, chamfer_samples));
+        
+        // 选择更好的结果
+        if (chm < ch0 && chm < best_score) {
+            Tbest = Tm * M;
+            best_score = chm;
+            best_mirrored = true;
+        } else if (ch0 < best_score) {
+            Tbest = T0;
+            best_score = ch0;
+            best_mirrored = false;
+        }
+    }
+    
+    py::array_t<double> Tnp({4, 4});
+    auto r = Tnp.mutable_unchecked<2>();
+    for (int i = 0; i < 4; ++i) for (int j = 0; j < 4; ++j) r(i, j) = Tbest(i, j);
+    
+    return py::dict("T"_a = Tnp, "chamfer"_a = best_score, "mirrored"_a = best_mirrored);
 }
 
 // ----------------------------- 采样式 SDF 余量 -----------------------------
@@ -761,6 +884,15 @@ PYBIND11_MODULE(cppcore, m) {
     m.def("align_icp_with_mirror", &align_icp_with_mirror, "Registration with YZ-mirror option",
           py::arg("v_src"), py::arg("f_src"), py::arg("v_tgt"), py::arg("f_tgt"),
           py::arg("voxel"), py::arg("fpfh_radius"), py::arg("icp_thr"));
+    m.def("align_icp_robust", &align_icp_robust, "Robust multi-start registration with improved RANSAC",
+          py::arg("v_src"), py::arg("f_src"), py::arg("v_tgt"), py::arg("f_tgt"),
+          py::arg("voxel"), py::arg("fpfh_radius"), py::arg("icp_thr"),
+          py::arg("n_starts") = 5, py::arg("max_iterations") = 20000, py::arg("confidence") = 800);
+    m.def("align_icp_high_accuracy", &align_icp_high_accuracy, "High-accuracy alignment with increased sampling and iterations",
+          py::arg("v_src"), py::arg("f_src"), py::arg("v_tgt"), py::arg("f_tgt"),
+          py::arg("voxel"), py::arg("fpfh_radius"), py::arg("icp_thr"),
+          py::arg("initial_samples") = 100000, py::arg("chamfer_samples") = 50000,
+          py::arg("max_iterations") = 50000, py::arg("confidence") = 1500, py::arg("n_starts") = 7);
 
     // 采样式 SDF + 批量
     m.def("clearance_sampling", &clearance_sampling, "Sampling-based SDF clearance check",
