@@ -64,14 +64,19 @@ RUN pip3 install --no-cache-dir \
     Cython==0.29.37 \
     pyembree==0.1.12 \
     pygltflib==1.16.5 \
+    # Install regular Open3D (will be cleaned up in runtime stage)
     open3d==0.19.0
 
-# Copy pre-built Open3D and OpenNURBS libraries from existing directory
+# Copy pre-built Open3D and OpenNURBS libraries from compressed archive
 # This avoids the time-consuming compilation and network issues
-COPY docker-extract/ /usr/local/
+COPY docker-extract.tar.gz /tmp/
 
 # Configure Open3D libraries, headers, and CMake files in one layer
-RUN mv /usr/local/libOpen3D.so* /usr/local/lib/ \
+RUN cd /tmp \
+    && tar -xzf docker-extract.tar.gz \
+    && cp -r docker-extract/* /usr/local/ \
+    && rm -rf docker-extract docker-extract.tar.gz \
+    && mv /usr/local/libOpen3D.so* /usr/local/lib/ \
     && mv /usr/local/libOpenNURBS.so* /usr/local/lib/ \
     && mv /usr/local/libopennurbs* /usr/local/lib/ \
     && mv /usr/local/open3d /usr/local/include/ \
@@ -130,10 +135,10 @@ ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 
 # Install only runtime dependencies (no build tools)
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     # Python runtime
     python3.10 python3-pip \
-    # Essential runtime libraries only (headers needed for some Python packages)
+    # Essential runtime libraries only (minimal headers)
     libeigen3-dev \
     # Image processing runtime libraries
     libjpeg-turbo8 libpng16-16 libtiff5 \
@@ -143,10 +148,16 @@ RUN apt-get update && apt-get install -y \
     libspatialindex6 \
     # TBB library for Open3D
     libtbb12 \
+    # OpenMP library (required for Open3D)
+    libgomp1 \
     # Minimal OpenGL support (runtime only)
     libgl1-mesa-glx libglu1-mesa \
     && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    && apt-get clean \
+    # Clean up additional cache and temporary files
+    && find /var/cache -type f -delete \
+    && find /var/log -type f -delete \
+    && find /tmp -type f -delete
 
 # Install Python dependencies (runtime only, no build dependencies)
 RUN pip3 install --no-cache-dir --no-compile \
@@ -161,7 +172,24 @@ RUN pip3 install --no-cache-dir --no-compile \
     pandas==2.3.2 \
     pyembree==0.1.12 \
     pygltflib==1.16.5 \
-    open3d==0.19.0
+    # Install regular Open3D
+    && pip3 install --no-cache-dir --no-compile open3d==0.19.0 \
+    # Aggressive cleanup to reduce image size (saves ~800MB+)
+    && find /usr/local/lib/python3.10/dist-packages -name "*.pyc" -delete \
+    && find /usr/local/lib/python3.10/dist-packages -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true \
+    && find /usr/local/lib/python3.10/dist-packages -name "tests" -exec rm -rf {} + 2>/dev/null || true \
+    && find /usr/local/lib/python3.10/dist-packages -name "test" -exec rm -rf {} + 2>/dev/null || true \
+    # Remove CUDA components (biggest space savings ~800MB)
+    && rm -rf /usr/local/lib/python3.10/dist-packages/open3d/cuda || true \
+    # Remove specific PyTorch files but keep ML structure (saves ~50MB)
+    && find /usr/local/lib/python3.10/dist-packages/open3d -name "*torch_ops*" -delete || true \
+    # Remove heavy ML model files but keep module structure (saves ~50MB)
+    && find /usr/local/lib/python3.10/dist-packages/open3d -name "*.pth" -delete || true \
+    && find /usr/local/lib/python3.10/dist-packages/open3d -name "*.onnx" -delete || true \
+    # Remove documentation and examples (saves ~20MB)
+    && find /usr/local/lib/python3.10/dist-packages -name "*.md" -delete || true \
+    && find /usr/local/lib/python3.10/dist-packages -name "examples" -exec rm -rf {} + 2>/dev/null || true \
+    && find /usr/local/lib/python3.10/dist-packages -name "docs" -exec rm -rf {} + 2>/dev/null || true
 
 # Copy pre-built libraries and compiled module from builder stage
 COPY --from=builder /usr/local/lib/libOpen3D.so* /usr/local/lib/
@@ -190,6 +218,9 @@ ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 ENV LD_PRELOAD=/usr/local/lib/libOpen3D.so
 ENV PYTHONPATH=/app/python:$PYTHONPATH
 ENV OMP_NUM_THREADS=1
+# Python optimization environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
 # Create minimal entrypoint script
 RUN echo '#!/bin/bash\n\
