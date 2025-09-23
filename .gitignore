@@ -6,6 +6,8 @@ __pycache__/
 
 # C extensions
 *.so
+# But allow specific .so files for LFS
+!hybrid/docker-extract/libOpen3D.so.0.19.0
 
 # Distribution / packaging
 .Python
@@ -81,3 +83,10 @@ Thumbs.db
 # Ignore docker-compose bind mounts
 docker/mysql/init.sql
 .cursor
+models
+candidates
+output
+backup*/
+venv/
+webpage/test_output
+webpage/test_candidates

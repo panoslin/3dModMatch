@@ -1,0 +1,2 @@
+*.so filter=lfs diff=lfs merge=lfs -text
+hybrid/docker-extract/libOpen3D.so.0.19.0 filter=lfs diff=lfs merge=lfs -text
