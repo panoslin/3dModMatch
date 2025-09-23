@@ -8,10 +8,10 @@ ENV TZ=Asia/Shanghai
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 
-# Configure China mirrors for apt
-RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.aliyun.com@g' /etc/apt/sources.list && \
-    sed -i 's@//.*security.ubuntu.com@//mirrors.aliyun.com@g' /etc/apt/sources.list && \
-    sed -i 's@//ports.ubuntu.com@//mirrors.aliyun.com@g' /etc/apt/sources.list
+# # Configure China mirrors for apt
+# RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.aliyun.com@g' /etc/apt/sources.list && \
+#     sed -i 's@//.*security.ubuntu.com@//mirrors.aliyun.com@g' /etc/apt/sources.list && \
+#     sed -i 's@//ports.ubuntu.com@//mirrors.aliyun.com@g' /etc/apt/sources.list
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -54,6 +54,9 @@ RUN apt-get update && apt-get install -y \
     # OpenGL
     libgl1-mesa-dev \
     libglu1-mesa-dev \
+    # TBB library for Open3D
+    libtbb12 \
+    libtbb-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install newer CMake (required for Open3D 0.19)
@@ -74,9 +77,9 @@ RUN apt-get update && apt-get install -y \
     nlohmann-json3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Configure Python with China mirrors
-RUN pip3 config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && \
-    pip3 config set global.trusted-host pypi.tuna.tsinghua.edu.cn
+# # Configure Python with China mirrors
+# RUN pip3 config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && \
+#     pip3 config set global.trusted-host pypi.tuna.tsinghua.edu.cn
 
 # Install Python dependencies for hybrid matcher
 RUN pip3 install --no-cache-dir \
@@ -95,42 +98,43 @@ RUN pip3 install --no-cache-dir \
     pyembree==0.1.12 \
     pygltflib==1.16.5
 
-# Build and install Open3D 0.19 from source
-RUN cd /tmp && \
-    git clone --depth 1 --branch v0.19.0 https://github.com/isl-org/Open3D.git && \
-    cd Open3D && \
-    mkdir build && cd build && \
-    cmake \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=/usr/local \
-        -DBUILD_GUI=OFF \
-        -DBUILD_EXAMPLES=OFF \
-        -DBUILD_UNIT_TESTS=OFF \
-        -DBUILD_PYTHON_MODULE=ON \
-        -DPYTHON_EXECUTABLE=/usr/bin/python3 \
-        -DBUILD_SHARED_LIBS=ON \
-        -DBUILD_CUDA_MODULE=OFF \
-        -DBUILD_WEBRTC=OFF \
-        .. && \
-    make -j$(nproc) && \
-    make install && \
-    cd / && rm -rf /tmp/Open3D
-
 # Install Open3D Python bindings
 RUN pip3 install --no-cache-dir open3d==0.19.0
 
-# Install OpenNURBS (for 3DM file support)
-RUN cd /tmp && \
-    wget https://github.com/mcneel/opennurbs/archive/refs/tags/v8.21.25188.17001.tar.gz && \
-    tar -xf v8.21.25188.17001.tar.gz && \
-    cd opennurbs-8.21.25188.17001 && \
-    mkdir build && cd build && \
-    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DON_DISABLE_TESTS=ON && \
-    make -j$(nproc) && \
-    make install && \
-    cp ../opennurbs_cpp_base.h /usr/local/include/OpenNURBS/ && \
-    ln -sf /usr/local/include/OpenNURBS /usr/local/include/opennurbs && \
-    cd / && rm -rf /tmp/opennurbs* /tmp/v8.21.25188.17001.tar.gz
+# Copy pre-built Open3D and OpenNURBS libraries from existing image
+# This avoids the time-consuming compilation and network issues
+COPY docker-extract/ /usr/local/
+
+# Move library files to the correct location
+RUN mv /usr/local/libOpen3D.so* /usr/local/lib/ && \
+    mv /usr/local/libOpenNURBS.so* /usr/local/lib/ && \
+    mv /usr/local/libopennurbs* /usr/local/lib/ && \
+    ls -la /usr/local/lib/libOpen3D.so*
+
+# Move header files to the correct location
+RUN mv /usr/local/open3d /usr/local/include/ && \
+    mv /usr/local/OpenNURBS /usr/local/include/ && \
+    mv /usr/local/opennurbs /usr/local/include/ && \
+    mv /usr/local/opennurbsStatic /usr/local/include/
+
+# Fix library paths in Open3D CMake configuration files
+RUN if [ -f /usr/local/lib/cmake/Open3D/Open3DTargets-release.cmake ]; then \
+        sed -i 's|${_IMPORT_PREFIX}/lib/libtbb.so.12.12|/usr/lib/x86_64-linux-gnu/libtbb.so.12|g' /usr/local/lib/cmake/Open3D/Open3DTargets-release.cmake && \
+        sed -i 's|${_IMPORT_PREFIX}/lib/libOpen3D.so.0.19.0|/usr/local/lib/libOpen3D.so.0.19.0|g' /usr/local/lib/cmake/Open3D/Open3DTargets-release.cmake; \
+    fi
+
+# Fix include paths in Open3D CMake configuration files
+RUN if [ -f /usr/local/lib/cmake/Open3D/Open3DConfig.cmake ]; then \
+        sed -i 's|get_filename_component(PACKAGE_PREFIX_DIR "${CMAKE_CURRENT_LIST_DIR}/../../../" ABSOLUTE)|set(PACKAGE_PREFIX_DIR "/usr/local")|g' /usr/local/lib/cmake/Open3D/Open3DConfig.cmake; \
+    fi
+
+# Fix INTERFACE_INCLUDE_DIRECTORIES paths in Open3DTargets.cmake
+RUN if [ -f /usr/local/lib/cmake/Open3D/Open3DTargets.cmake ]; then \
+        sed -i 's|\${_IMPORT_PREFIX}/include|/usr/local/include|g' /usr/local/lib/cmake/Open3D/Open3DTargets.cmake; \
+    fi
+
+# Create symbolic links for TBB library
+RUN ln -sf /usr/lib/x86_64-linux-gnu/libtbb.so.12 /usr/lib/x86_64-linux-gnu/libtbb.so.12.12
 
 # Update library paths
 RUN echo "/usr/local/lib" >> /etc/ld.so.conf.d/local.conf && \
@@ -199,7 +203,7 @@ export OMP_NUM_THREADS=1\n\
 \n\
 # Print environment info\n\
 echo "=== Hybrid Shoe Last Matcher ==="\n\
-echo "Open3D version: $(python3 -c \"import open3d; print(open3d.__version__)\" 2>/dev/null || echo \"Not available\")"\n\
+echo "Open3D version: $(python3 -c "import open3d; print(open3d.__version__)" 2>/dev/null || echo "Not available")"\n\
 echo "Python version: $(python3 --version)"\n\
 echo "Working directory: $(pwd)"\n\
 echo "================================="\n\
