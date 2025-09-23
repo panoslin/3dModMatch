@@ -101,9 +101,13 @@ RUN pip3 install --no-cache-dir \
 # Install Open3D Python bindings
 RUN pip3 install --no-cache-dir open3d==0.19.0
 
-# Copy pre-built Open3D and OpenNURBS libraries from existing image
+# Copy and extract pre-built Open3D and OpenNURBS libraries from compressed file
 # This avoids the time-consuming compilation and network issues
-COPY docker-extract/ /usr/local/
+COPY docker-extract.tar.gz /tmp/
+RUN cd /tmp && \
+    tar -xzf docker-extract.tar.gz && \
+    cp -r docker-extract/* /usr/local/ && \
+    rm -rf docker-extract docker-extract.tar.gz
 
 # Move library files to the correct location
 RUN mv /usr/local/libOpen3D.so* /usr/local/lib/ && \
