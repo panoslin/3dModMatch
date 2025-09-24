@@ -39,39 +39,39 @@ services:
       - shoe_matcher_network
 
   # Hybrid匹配服务容器
-  matcher:
-    # build:
-      # context: ../hybrid
-      # dockerfile: Dockerfile
-    image: panoslin/shoe_matcher_hybrid:v1
-    container_name: shoe_matcher_hybrid
-    command: ["tail", "-f", "/dev/null"]  # 保持容器运行
-    volumes:
-      - ./results:/app/output
-      - ./shoe_matcher_web/media:/app/input:ro
-      - ./logs:/app/logs
-    environment:
-      - LD_LIBRARY_PATH=/usr/local/lib
-      - LD_PRELOAD=/usr/local/lib/libOpen3D.so
-      - PYTHONPATH=/app/python
-      - OMP_NUM_THREADS=${MATCHER_OMP_THREADS:-4}
-    healthcheck:
-      test: ["CMD", "python3", "-c", "import cppcore; print('OK')"]
-      interval: 30s
-      timeout: 15s
-      retries: 3
-      start_period: 60s
-    restart: unless-stopped
-    networks:
-      - shoe_matcher_network
-    deploy:
-      resources:
-        limits:
-          cpus: '${MATCHER_MAX_CPUS:-8}'
-          memory: ${MATCHER_MAX_MEMORY:-8G}
-        reservations:
-          cpus: '${MATCHER_MIN_CPUS:-4}'
-          memory: ${MATCHER_MIN_MEMORY:-4G}
+  # matcher:
+  #   # build:
+  #     # context: ../hybrid
+  #     # dockerfile: Dockerfile
+  #   image: panoslin/shoe_matcher_hybrid:v1
+  #   container_name: shoe_matcher_hybrid
+  #   command: ["tail", "-f", "/dev/null"]  # 保持容器运行
+  #   volumes:
+  #     - ./results:/app/output
+  #     - ./shoe_matcher_web/media:/app/input:ro
+  #     - ./logs:/app/logs
+  #   environment:
+  #     - LD_LIBRARY_PATH=/usr/local/lib
+  #     - LD_PRELOAD=/usr/local/lib/libOpen3D.so
+  #     - PYTHONPATH=/app/python
+  #     - OMP_NUM_THREADS=${MATCHER_OMP_THREADS:-4}
+  #   healthcheck:
+  #     test: ["CMD", "python3", "-c", "import cppcore; print('OK')"]
+  #     interval: 30s
+  #     timeout: 15s
+  #     retries: 3
+  #     start_period: 60s
+  #   restart: unless-stopped
+  #   networks:
+  #     - shoe_matcher_network
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '${MATCHER_MAX_CPUS:-8}'
+  #         memory: ${MATCHER_MAX_MEMORY:-8G}
+  #       reservations:
+  #         cpus: '${MATCHER_MIN_CPUS:-4}'
+  #         memory: ${MATCHER_MIN_MEMORY:-4G}
 
   # Django Web应用
   web:
@@ -116,8 +116,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      matcher:
-        condition: service_healthy
+      # matcher:
+      #   condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
       interval: 30s
@@ -165,8 +165,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      matcher:
-        condition: service_healthy
+      # matcher:
+      #   condition: service_healthy
       web:
         condition: service_healthy
     restart: unless-stopped
