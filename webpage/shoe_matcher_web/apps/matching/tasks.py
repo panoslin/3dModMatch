@@ -241,14 +241,14 @@ def run_matching_task(task_id):
                 
                 logger.info(f"Matching task {task.task_id} completed successfully")
                 
-                # ==================== 第八步：触发热力图生成任务 ====================
-                # 异步触发热力图生成，不阻塞主任务完成
-                try:
-                    # 使用当前文件中定义的任务
-                    generate_heatmaps_task.delay(task.task_id, top_k=4)
-                    logger.info(f"已触发热力图生成任务: {task.task_id}")
-                except Exception as e:
-                    logger.error(f"触发热力图生成任务失败: {e}")
+                # # ==================== 第八步：触发热力图生成任务 ====================
+                # # 异步触发热力图生成，不阻塞主任务完成
+                # try:
+                #     # 使用当前文件中定义的任务
+                #     generate_heatmaps_task.delay(task.task_id, top_k=4)
+                #     logger.info(f"已触发热力图生成任务: {task.task_id}")
+                # except Exception as e:
+                #     logger.error(f"触发热力图生成任务失败: {e}")
                 
             else:
                 # 匹配失败，更新任务状态
