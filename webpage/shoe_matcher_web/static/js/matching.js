@@ -1309,21 +1309,32 @@ class MatchingApp {
             $('.progress-bar').css('width', '100%').text('100%');
             
             if (uploadedShoes.length > 0) {
+                // ==================== 存储上传的鞋模列表 ====================
                 // 存储上传的鞋模列表
                 this.uploadedShoeModels = uploadedShoes;
                 
+                // ==================== 重置队列状态 ====================
                 // 重置队列状态
                 this.resetQueue();
                 
+                // ==================== 处理单个和批量鞋模 ====================
                 // 如果只有一个文件，设置为当前鞋模
                 if (uploadedShoes.length === 1) {
                     this.currentShoeModel = uploadedShoes[0];
-                    this.updateShoeModelDisplay();
+                } else {
+                    // 批量上传时，清空当前鞋模，让界面显示批量信息
+                    this.currentShoeModel = null;
                 }
                 
+                // ==================== 更新鞋模显示 ====================
+                // 更新鞋模显示信息（支持单个和批量显示）
+                this.updateShoeModelDisplay();
+                
+                // ==================== 关闭Modal ====================
                 // 关闭Modal
                 $('#shoeUploadModal').modal('hide');
                 
+                // ==================== 显示成功通知 ====================
                 if (uploadedShoes.length === 1) {
                     Utils.showNotification('鞋模上传成功！', 'success');
                 } else {
@@ -1331,6 +1342,7 @@ class MatchingApp {
                     // 不在这里显示批量匹配选项，等用户点击匹配按钮时再显示
                 }
                 
+                // ==================== 更新匹配按钮状态 ====================
                 // 更新匹配按钮状态
                 this.updateMatchingButton();
             } else {
@@ -2105,32 +2117,185 @@ class MatchingApp {
     /**
      * 更新鞋模显示信息
      * 
-     * 在界面上显示当前选中鞋模的详细信息
+     * 在界面上显示当前选中鞋模或批量鞋模的详细信息
      */
     updateShoeModelDisplay() {
+        // ==================== 检查鞋模数据 ====================
+        // 优先显示当前选中的鞋模，如果没有则显示批量鞋模信息
         if (this.currentShoeModel) {
-            // ==================== 更新鞋模信息 ====================
+            // ==================== 显示单个鞋模信息 ====================
             // 显示鞋模名称、体积和文件大小
             $('#shoe-model-name').text(this.currentShoeModel.name);
             $('#shoe-model-volume').text(`体积: ${this.currentShoeModel.volume?.toFixed(0) || '--'} mm³`);
             $('#shoe-model-size').text(`大小: ${this.currentShoeModel.file_size_mb}MB`);
             $('#shoe-model-info').removeClass('d-none');
             
-            // ==================== 更新匹配按钮 ====================
-            // 更新匹配按钮状态
-            this.updateMatchingButton();
+        } else if (this.uploadedShoeModels && this.uploadedShoeModels.length > 0) {
+            // ==================== 显示批量鞋模信息 ====================
+            // 显示批量鞋模的汇总信息
+            const totalSize = this.uploadedShoeModels.reduce((sum, shoe) => sum + (shoe.file_size_mb || 0), 0);
+            const totalVolume = this.uploadedShoeModels.reduce((sum, shoe) => sum + (shoe.volume || 0), 0);
+            
+            $('#shoe-model-name').text(`批量鞋模 (${this.uploadedShoeModels.length} 个文件)`);
+            $('#shoe-model-volume').text(`总体积: ${totalVolume.toFixed(0)} mm³`);
+            $('#shoe-model-size').text(`总大小: ${totalSize.toFixed(1)}MB`);
+            $('#shoe-model-info').removeClass('d-none');
+            
+            // ==================== 显示批量鞋模列表 ====================
+            // 创建批量鞋模列表显示
+            this.displayBatchShoeModels();
+            
+        } else {
+            // ==================== 隐藏鞋模信息 ====================
+            // 没有鞋模时隐藏信息区域
+            $('#shoe-model-info').addClass('d-none');
+        }
+        
+        // ==================== 更新匹配按钮 ====================
+        // 更新匹配按钮状态
+        this.updateMatchingButton();
+    }
+    
+    /**
+     * 显示批量鞋模列表
+     * 
+     * 在界面上显示批量上传的鞋模文件列表
+     */
+    displayBatchShoeModels() {
+        if (!this.uploadedShoeModels || this.uploadedShoeModels.length <= 1) return;
+        
+        // ==================== 创建批量鞋模列表HTML ====================
+        // 生成批量鞋模列表的HTML
+        const shoeListHtml = `
+            <div class="mt-2">
+                <small class="text-muted">已上传的鞋模文件：</small>
+                <div class="mt-1">
+                    ${this.uploadedShoeModels.map((shoe, index) => `
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <div class="flex-grow-1">
+                                <small class="text-primary">${shoe.name}</small>
+                                <br>
+                                <small class="text-muted">${shoe.file_size_mb}MB</small>
+                            </div>
+                            <div>
+                                // <button class="btn btn-sm btn-outline-primary me-1" onclick="matchingApp.selectShoeModel(${index})">
+                                //     <i class="fas fa-check"></i> 选择
+                                // </button>
+                                <button class="btn btn-sm btn-outline-info" id="preview-btn-${shoe.id}" onclick="matchingApp.previewShoeModelById(${shoe.id})">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        
+        // ==================== 更新界面显示 ====================
+        // 在鞋模信息区域添加批量列表
+        if ($('#batch-shoe-list').length === 0) {
+            $('#shoe-model-info').append('<div id="batch-shoe-list"></div>');
+        }
+        $('#batch-shoe-list').html(shoeListHtml);
+    }
+    
+    // /**
+    //  * 选择鞋模
+    //  * 
+    //  * 从批量鞋模中选择一个作为当前鞋模
+    //  * 
+    //  * @param {number} index - 鞋模在批量列表中的索引
+    //  */
+    // selectShoeModel(index) {
+    //     if (this.uploadedShoeModels && this.uploadedShoeModels[index]) {
+    //         // ==================== 设置当前鞋模 ====================
+    //         // 将选中的鞋模设置为当前鞋模
+    //         this.currentShoeModel = this.uploadedShoeModels[index];
+            
+    //         // ==================== 更新显示 ====================
+    //         // 重新更新鞋模显示
+    //         this.updateShoeModelDisplay();
+            
+    //         // ==================== 显示确认信息 ====================
+    //         // 显示选择确认信息
+    //         Utils.showNotification(`已选择鞋模: ${this.currentShoeModel.name}`, 'success');
+    //     }
+    // }
+    
+    /**
+     * 通过ID预览鞋模
+     * 
+     * 根据鞋模ID预览指定的鞋模3D模型，包含加载状态和动画效果
+     * 
+     * @param {number} shoeId - 鞋模ID
+     */
+    async previewShoeModelById(shoeId) {
+        const previewBtn = $(`#preview-btn-${shoeId}`);
+        const originalContent = previewBtn.html();
+        
+        try {
+            // ==================== 显示加载状态 ====================
+            // 禁用按钮并显示加载动画
+            previewBtn.prop('disabled', true);
+            previewBtn.html('<i class="fas fa-spinner fa-spin"></i>');
+            
+            // ==================== 请求3D预览数据 ====================
+            // 请求指定鞋模的3D预览数据
+            const response = await Utils.apiRequest(`/api/visualization/preview/${shoeId}/?type=shoe`);
+            
+            if (response.success) {
+                // ==================== 显示3D预览 ====================
+                // 显示3D预览Modal
+                $('#preview-3d-content').html(response.data.html);
+                $('#model-info #vertex-count').text(response.data.metadata.vertex_count || '--');
+                $('#model-info #face-count').text(response.data.metadata.face_count || '--');
+                $('#model-info #model-volume').text((response.data.metadata.volume || 0).toFixed(0));
+                $('#preview3DModal').modal('show');
+                                
+                // 动态调整#scene元素的大小
+                setTimeout(() => {
+                    this.adjustSceneSize();
+                }, 200);
+                // ==================== 恢复按钮状态 ====================
+                // 恢复按钮原始状态
+                previewBtn.prop('disabled', false);
+                previewBtn.html(originalContent);
+                
+            } else {
+                throw new Error(response.message || '预览生成失败');
+            }
+            
+        } catch (error) {
+            // ==================== 错误处理 ====================
+            // 恢复按钮状态并显示错误
+            previewBtn.prop('disabled', false);
+            previewBtn.html(originalContent);
+            
+            Utils.showNotification('预览加载失败: ' + error.message, 'error');
         }
     }
     
     /**
      * 预览鞋模3D模型
      * 
-     * 在3D预览模态框中显示当前鞋模的3D可视化
+     * 在3D预览模态框中显示当前鞋模的3D可视化，包含加载状态和动画效果
      */
     async previewShoeModel() {
         if (!this.currentShoeModel) return;
         
+        // ==================== 查找预览按钮 ====================
+        // 查找主要的预览按钮（可能在多个位置）
+        const previewBtn = $('#preview-shoe-btn, .preview-shoe-btn, [onclick*="previewShoeModel"]').first();
+        const originalContent = previewBtn.length > 0 ? previewBtn.html() : '';
+        
         try {
+            // ==================== 显示加载状态 ====================
+            // 如果找到预览按钮，显示加载动画
+            if (previewBtn.length > 0) {
+                previewBtn.prop('disabled', true);
+                previewBtn.html('<i class="fas fa-spinner fa-spin me-1"></i>生成中...');
+            }
+            
             // ==================== 请求3D预览数据 ====================
             // 请求鞋模的3D预览数据
             const response = await Utils.apiRequest(`/api/visualization/preview/${this.currentShoeModel.id}/?type=shoe`);
@@ -2143,9 +2308,26 @@ class MatchingApp {
                 $('#model-info #face-count').text(response.data.metadata.face_count || '--');
                 $('#model-info #model-volume').text((response.data.metadata.volume || 0).toFixed(0));
                 $('#preview3DModal').modal('show');
+                
+                // ==================== 恢复按钮状态 ====================
+                // 恢复按钮原始状态
+                if (previewBtn.length > 0) {
+                    previewBtn.prop('disabled', false);
+                    previewBtn.html(originalContent);
+                }
+                
+            } else {
+                throw new Error(response.message || '预览生成失败');
             }
             
         } catch (error) {
+            // ==================== 错误处理 ====================
+            // 恢复按钮状态并显示错误
+            if (previewBtn.length > 0) {
+                previewBtn.prop('disabled', false);
+                previewBtn.html(originalContent);
+            }
+            
             Utils.showNotification('预览加载失败: ' + error.message, 'error');
         }
     }
@@ -2729,8 +2911,20 @@ class MatchingApp {
     }
     
     async previewBlank(blankId) {
+        // ==================== 查找预览按钮 ====================
+        // 查找粗胚预览按钮
+        const previewBtn = $(`[onclick*="previewBlank(${blankId})"]`).first();
+        const originalContent = previewBtn.length > 0 ? previewBtn.html() : '';
+        
         try {
-            // 立即显示Modal和加载状态
+            // ==================== 显示按钮加载状态 ====================
+            // 如果找到预览按钮，显示加载动画
+            if (previewBtn.length > 0) {
+                previewBtn.prop('disabled', true);
+                previewBtn.html('<i class="fas fa-spinner fa-spin me-1"></i>生成中...');
+            }
+            
+            // ==================== 立即显示Modal和加载状态 ====================
             console.log('开始预览粗胚，ID:', blankId);
             
             // 显示加载状态
@@ -2763,6 +2957,7 @@ class MatchingApp {
             console.log('预览API响应:', response);
             
             if (response.success) {
+                // ==================== 更新预览内容 ====================
                 // 更新内容
                 $('#preview-3d-content').html(response.data.html);
                 $('#model-info #vertex-count').text(response.data.metadata.vertex_count || '--');
@@ -2778,6 +2973,14 @@ class MatchingApp {
                 }, 200);
                 
                 console.log('预览加载完成');
+                
+                // ==================== 恢复按钮状态 ====================
+                // 恢复按钮原始状态
+                if (previewBtn.length > 0) {
+                    previewBtn.prop('disabled', false);
+                    previewBtn.html(originalContent);
+                }
+                
             } else {
                 throw new Error(response.message || '预览生成失败');
             }
@@ -2785,6 +2988,14 @@ class MatchingApp {
         } catch (error) {
             console.error('预览加载失败:', error);
             
+            // ==================== 恢复按钮状态 ====================
+            // 恢复按钮原始状态
+            if (previewBtn.length > 0) {
+                previewBtn.prop('disabled', false);
+                previewBtn.html(originalContent);
+            }
+            
+            // ==================== 显示错误状态 ====================
             // 显示错误状态
             $('#preview-3d-content').html(`
                 <div class="text-center py-5">
