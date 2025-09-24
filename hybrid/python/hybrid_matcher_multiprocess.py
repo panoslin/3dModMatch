@@ -208,7 +208,7 @@ def run_multiprocess_matcher(
     
     # 计算进程数
     if num_processes is None:
-        num_processes = cpu_count() * 2  # 默认使用2倍CPU核心数
+        num_processes = cpu_count()  # 默认使用CPU核心数
     
     print("="*70)
     print("MULTI-PROCESS SHOE LAST MATCHER")
