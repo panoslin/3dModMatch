@@ -1,103 +1,155 @@
 /**
- * 匹配页面JavaScript
+ * 3D鞋模智能匹配系统 - 前端JavaScript主控制器
+ * 
+ * 这个文件包含了匹配页面的所有核心功能：
+ * - 鞋模文件上传和管理
+ * - 粗胚分类选择和库管理
+ * - 匹配任务创建和状态监控
+ * - 批量匹配队列处理
+ * - 匹配结果展示和热力图生成
+ * - 3D模型预览和交互
+ * - 数据导出功能
+ * 
+ * @author 3D ModMatch Team
+ * @version 1.0.0
  */
 
 class MatchingApp {
+    /**
+     * 初始化匹配应用
+     * 
+     * 设置应用的核心状态变量和初始化流程
+     */
     constructor() {
-        this.currentShoeModel = null;
-        this.selectedCategories = [];
-        this.currentTask = null;
-        this.pollTimer = null;
+        // ==================== 核心状态管理 ====================
+        this.currentShoeModel = null;        // 当前选中的鞋模文件
+        this.selectedCategories = [];        // 已选择的粗胚分类ID列表
+        this.currentTask = null;             // 当前匹配任务信息
+        this.pollTimer = null;               // 任务状态轮询定时器
         
-        // 队列管理属性
-        this.queuedShoeModels = [];
-        this.currentQueueIndex = -1;
-        this.completedMatches = [];
-        this.isQueueProcessing = false;
+        // ==================== 批量匹配队列管理 ====================
+        this.queuedShoeModels = [];          // 待匹配的鞋模队列
+        this.currentQueueIndex = -1;         // 当前处理的队列索引
+        this.completedMatches = [];          // 已完成的匹配结果
+        this.isQueueProcessing = false;      // 队列是否正在处理中
         
+        // 启动应用初始化
         this.init();
     }
     
+    /**
+     * 初始化应用
+     * 
+     * 绑定事件监听器和加载初始数据
+     */
     init() {
         this.bindEvents();
         this.loadInitialData();
     }
     
+    /**
+     * 绑定所有事件监听器
+     * 
+     * 使用事件委托避免重复绑定，提高性能和稳定性
+     */
     bindEvents() {
-        // 防止重复绑定
+        // 防止重复绑定事件，避免内存泄漏
         if (this._eventsBound) {
             console.log('事件已绑定，跳过');
             return;
         }
         
-        // 开始匹配按钮
+        // ==================== 核心匹配功能事件 ====================
+        // 开始匹配按钮 - 触发匹配流程
         $('#startMatching').off('click').on('click', () => this.startMatching());
         
-        // 鞋模上传相关事件 - 使用事件委托，避免重复绑定
+        // ==================== 鞋模文件上传事件 ====================
+        // 文件选择按钮 - 触发文件选择对话框
         $(document).off('click', '#select-shoe-file').on('click', '#select-shoe-file', (e) => {
             e.preventDefault();
             e.stopPropagation();
             $('#shoe-file-input').click();
         });
         
+        // 文件选择变化 - 处理用户选择的文件
         $(document).off('change', '#shoe-file-input').on('change', '#shoe-file-input', (e) => {
             this.handleShoeFileSelect(e);
         });
         
+        // 确认上传按钮 - 开始上传文件
         $(document).off('click', '#confirm-shoe-upload').on('click', '#confirm-shoe-upload', () => {
             this.uploadShoeFile();
         });
         
+        // 预览鞋模按钮 - 显示3D预览
         $(document).off('click', '#preview-shoe-btn').on('click', '#preview-shoe-btn', () => {
             this.previewShoeModel();
         });
         
-        // 粗胚管理相关事件
+        // ==================== 粗胚库管理事件 ====================
+        // 管理粗胚库按钮 - 打开粗胚管理界面
         $(document).off('click', '#manage-blank-library-btn').on('click', '#manage-blank-library-btn', () => {
             this.showBlankManage();
         });
         
+        // 上传粗胚按钮 - 打开批量上传界面
         $(document).off('click', '#upload-blank-btn').on('click', '#upload-blank-btn', () => {
             this.showBlankUpload();
         });
         
+        // 管理分类按钮 - 打开分类管理界面
         $(document).off('click', '#manage-categories-btn').on('click', '#manage-categories-btn', () => {
             this.showCategoryManage();
         });
         
+        // 应用粗胚选择按钮 - 确认选择的分类
         $(document).off('click', '#apply-blank-selection').on('click', '#apply-blank-selection', () => {
             this.applyBlankSelection();
         });
         
-        // 匹配参数相关事件
+        // ==================== 匹配参数验证事件 ====================
+        // 间隙参数输入 - 实时验证参数有效性
         $('#clearance').off('input').on('input', () => this.validateMatchingParams());
+        // 阈值参数选择 - 更新参数说明
         $('#threshold').off('change').on('change', () => this.validateMatchingParams());
+        // 启用缩放选项 - 控制缩放相关参数
         $('#enableScaling').off('change').on('change', () => this.toggleScalingOptions());
+        // 最大缩放比例 - 验证缩放参数
         $('#maxScale').off('input').on('input', () => this.validateScalingParams());
         
-        // 导出功能事件
+        // ==================== 数据导出功能事件 ====================
+        // 导出报告按钮 - 导出匹配结果报告
         $('#export-report-btn').off('click').on('click', () => this.exportReport());
+        // 导出模型按钮 - 导出3D模型文件
         $('#export-models-btn').off('click').on('click', () => this.exportModels());
         
-        // 文件拖拽上传
+        // ==================== 文件拖拽上传功能 ====================
+        // 设置拖拽上传区域
         this.setupDragAndDrop();
         
+        // ==================== 跨页面通信事件 ====================
         // 监听分类变化事件，当分类管理页面有变化时自动刷新主页面的分类选择
         $(document).off('categoryChanged.mainPage').on('categoryChanged.mainPage', () => {
             console.log('检测到分类变化，刷新主页面分类选择');
             this.loadCategories();
         });
         
-        // 标记事件已绑定
+        // 标记事件已绑定，防止重复绑定
         this._eventsBound = true;
         console.log('匹配页面事件绑定完成');
     }
     
+    /**
+     * 加载初始数据
+     * 
+     * 页面加载时获取必要的初始数据，包括分类信息和任务结果
+     */
     loadInitialData() {
-        // 加载分类数据
+        // 加载粗胚分类数据
         this.loadCategories();
         
         // 检查URL参数，如果有task参数则加载任务结果
+        // 支持通过URL直接访问特定任务的结果页面
         const urlParams = new URLSearchParams(window.location.search);
         const taskId = urlParams.get('task');
         if (taskId) {
@@ -106,15 +158,23 @@ class MatchingApp {
         }
     }
     
+    /**
+     * 异步加载粗胚分类数据
+     * 
+     * 从后端API获取所有可用的粗胚分类，用于用户选择匹配范围
+     */
     async loadCategories() {
         try {
+            // 显示加载状态
             Utils.showLoading('#category-selection');
             
+            // 请求分类数据
             const response = await Utils.apiRequest('/api/blanks/categories/');
             if (response.success) {
                 this.renderCategories(response.data);
             }
         } catch (error) {
+            // 显示错误状态
             $('#category-selection').html(`
                 <div class="text-danger text-center py-3">
                     <i class="fas fa-exclamation-triangle"></i>
@@ -125,8 +185,14 @@ class MatchingApp {
         }
     }
     
+    /**
+     * 渲染分类选择界面
+     * 
+     * @param {Array} categories - 分类数据数组
+     */
     renderCategories(categories) {
         if (!categories || categories.length === 0) {
+            // 没有分类时显示提示信息
             $('#category-selection').html(`
                 <div class="text-muted text-center py-3">
                     <i class="fas fa-folder-open"></i>
@@ -136,6 +202,7 @@ class MatchingApp {
             return;
         }
         
+        // 生成分类HTML
         let html = '';
         categories.forEach(category => {
             html += this.renderCategoryItem(category);
@@ -150,10 +217,17 @@ class MatchingApp {
         });
     }
     
+    /**
+     * 递归渲染单个分类项
+     * 
+     * @param {Object} category - 分类对象
+     * @param {number} level - 层级深度，用于缩进显示
+     * @returns {string} 分类项的HTML字符串
+     */
     renderCategoryItem(category, level = 0) {
         const marginLeft = level * 20; // 每级缩进20px
-        const icon = level === 0 ? 'fa-folder' : 'fa-tag';
-        const textClass = level === 0 ? 'fw-bold' : '';
+        const icon = level === 0 ? 'fa-folder' : 'fa-tag';  // 根分类用文件夹图标，子分类用标签图标
+        const textClass = level === 0 ? 'fw-bold' : '';     // 根分类加粗显示
         
         let html = `
             <div class="category-item d-flex align-items-center py-2 px-2 border-bottom bg-light rounded mb-1" 
@@ -167,6 +241,7 @@ class MatchingApp {
             </div>
         `;
         
+        // 递归渲染子分类
         if (category.children && category.children.length > 0) {
             category.children.forEach(child => {
                 html += this.renderCategoryItem(child, level + 1);
@@ -176,23 +251,40 @@ class MatchingApp {
         return html;
     }
     
+    /**
+     * 切换分类选择状态
+     * 
+     * 处理用户点击分类项时的选择/取消选择逻辑
+     * 
+     * @param {string} categoryId - 分类ID
+     */
     toggleCategory(categoryId) {
         const index = this.selectedCategories.indexOf(categoryId);
         const element = $(`.category-item[data-category-id="${categoryId}"]`);
         
         if (index > -1) {
-            // 取消选择
+            // ==================== 取消选择 ====================
+            // 从选中列表中移除该分类
             this.selectedCategories.splice(index, 1);
+            // 更新UI样式为未选中状态
             element.removeClass('bg-primary text-white').addClass('bg-light');
         } else {
-            // 添加选择
+            // ==================== 添加选择 ====================
+            // 将分类添加到选中列表
             this.selectedCategories.push(categoryId);
+            // 更新UI样式为选中状态
             element.removeClass('bg-light').addClass('bg-primary text-white');
         }
         
+        // 更新匹配按钮状态
         this.updateMatchingButton();
     }
     
+    /**
+     * 更新匹配按钮状态
+     * 
+     * 根据当前是否有鞋模文件和选择的分类来启用/禁用匹配按钮
+     */
     updateMatchingButton() {
         const hasShoe = this.currentShoeModel !== null || (this.uploadedShoeModels && this.uploadedShoeModels.length > 0);
         const hasCategories = this.selectedCategories.length > 0;
@@ -214,7 +306,13 @@ class MatchingApp {
         }
     }
     
+    /**
+     * 开始匹配任务
+     * 
+     * 这是匹配流程的入口点，处理单文件匹配和批量匹配的逻辑分发
+     */
     async startMatching() {
+        // ==================== 批量匹配检查 ====================
         // 检查是否有多个鞋模文件，如果有则显示批量匹配选项
         if (this.uploadedShoeModels && this.uploadedShoeModels.length > 1) {
             // 检查是否选择了分类
@@ -222,79 +320,117 @@ class MatchingApp {
                 Utils.showNotification('请先选择粗胚分类', 'warning');
                 return;
             }
-            // 显示批量匹配选项
+            // 显示批量匹配选项Modal
             this.showBatchMatchingOptions();
             return;
         }
         
+        // ==================== 单文件匹配验证 ====================
+        // 验证是否有鞋模文件和选择的分类
         if (!this.currentShoeModel || this.selectedCategories.length === 0) {
             Utils.showNotification('请先上传鞋模文件并选择粗胚分类', 'warning');
             return;
         }
         
         try {
-            // 验证匹配参数
+            // ==================== 参数验证 ====================
+            // 验证匹配参数的有效性
             if (!this.validateMatchingParams()) {
                 return;
             }
             
-            // 收集匹配参数
+            // ==================== 准备匹配参数 ====================
+            // 收集所有匹配参数
             const params = {
-                shoe_model_id: this.currentShoeModel.id,
-                category_ids: this.selectedCategories,
-                ...this.getMatchingParams()
+                shoe_model_id: this.currentShoeModel.id,    // 目标鞋模ID
+                category_ids: this.selectedCategories,      // 选择的分类ID列表
+                ...this.getMatchingParams()                 // 其他匹配参数（间隙、阈值等）
             };
             
-            // 显示匹配状态
+            // ==================== 显示匹配状态 ====================
+            // 切换到匹配进行中的UI状态
             this.showMatchingStatus();
             
-            // 检查鞋模处理状态
+            // ==================== 检查鞋模处理状态 ====================
+            // 确保鞋模文件已完全处理完成
             await this.checkShoeProcessingStatus();
             
-            // 发起匹配请求
+            // ==================== 发起匹配请求 ====================
+            // 向后端API发送匹配任务请求
             const response = await Utils.apiRequest('/api/matching/start/', {
                 method: 'POST',
                 body: JSON.stringify(params)
             });
             
             if (response.success) {
+                // 保存任务信息并开始状态轮询
                 this.currentTask = response.data;
-                this.matchingStartTime = Date.now(); // 记录开始时间
-                this.startPolling();
+                this.matchingStartTime = Date.now(); // 记录开始时间，用于进度估算
+                this.startPolling(this.currentTask);
                 Utils.showNotification('匹配任务已开始', 'success');
             }
             
         } catch (error) {
+            // 匹配启动失败，恢复UI状态
             this.hideMatchingStatus();
             Utils.showNotification('启动匹配失败: ' + error.message, 'error');
         }
     }
     
+    /**
+     * 显示匹配状态界面
+     * 
+     * 切换到匹配进行中的UI状态，显示进度条和状态信息
+     */
     showMatchingStatus() {
+        // ==================== 切换UI状态 ====================
+        // 隐藏默认状态和结果容器，显示匹配状态
         $('#default-state').addClass('d-none');
         $('#results-container').addClass('d-none');
         $('#matching-status').removeClass('d-none');
         
+        // ==================== 初始化状态信息 ====================
+        // 设置初始状态消息和进度
         $('#status-message').text('正在初始化匹配任务...');
         $('#progress-bar').css('width', '0%');
         $('#progress-detail').text('准备中...');
     }
     
+    /**
+     * 隐藏匹配状态界面
+     * 
+     * 从匹配状态切换回默认状态
+     */
     hideMatchingStatus() {
+        // 隐藏匹配状态，显示默认状态
         $('#matching-status').addClass('d-none');
         $('#default-state').removeClass('d-none');
     }
     
-    startPolling() {
+    /**
+     * 开始任务状态轮询
+     * 
+     * 定期检查匹配任务的执行状态，更新进度显示
+     * 
+     * @param {Object} task - 要轮询的任务对象
+     */
+    startPolling(task) {
+        // 清除之前的轮询定时器，避免重复轮询
         if (this.pollTimer) {
             clearInterval(this.pollTimer);
         }
         
+        // 设置新的轮询定时器，传入任务对象
         this.pollTimer = setInterval(() => {
-            this.checkTaskStatus();
+            this.checkTaskStatus(task);
         }, CONFIG.POLL_INTERVAL);
     }
     
+    /**
+     * 停止任务状态轮询
+     * 
+     * 清理轮询定时器并更新UI状态
+     */
     stopPolling() {
         if (this.pollTimer) {
             clearInterval(this.pollTimer);
@@ -305,32 +441,40 @@ class MatchingApp {
         this.updateMatchingButton();
     }
     
-    async checkTaskStatus() {
-        if (!this.currentTask) return;
-        
+    /**
+     * 检查任务执行状态
+     * 
+     * 向后端查询指定任务的执行状态，更新进度并处理完成/失败状态
+     * 
+     * @param {Object} currentTask - 要检查的任务对象
+     */
+    async checkTaskStatus(currentTask) {
         try {
-            const response = await Utils.apiRequest(`/api/matching/${this.currentTask.task_id}/status/`);
+            // 请求任务状态
+            const response = await Utils.apiRequest(`/api/matching/${currentTask.task_id}/status/`);
             
             if (response.success) {
                 const status = response.data;
                 this.updateProgress(status);
                 
                 if (status.status === 'completed') {
+                    // 任务完成
                     this.stopPolling();
                     if (this.isQueueProcessing) {
-                        // 队列模式：加载结果并继续下一个
-                        await this.handleQueueTaskComplete();
+                        // 队列模式：加载结果并继续下一个任务
+                        await this.handleQueueTaskComplete(currentTask);
                     } else {
                         // 单任务模式：正常加载结果
                         this.loadResults();
                     }
                 } else if (status.status === 'failed') {
+                    // 任务失败
                     this.stopPolling();
                     if (this.isQueueProcessing) {
-                        // 队列模式：记录失败并继续下一个
+                        // 队列模式：记录失败并继续下一个任务
                         await this.handleQueueTaskFailed();
                     } else {
-                        // 单任务模式：显示错误
+                        // 单任务模式：显示错误信息
                         this.showError('匹配任务失败');
                     }
                 }
@@ -340,20 +484,30 @@ class MatchingApp {
         }
     }
     
+    /**
+     * 更新匹配进度显示
+     * 
+     * 根据任务状态更新进度条、当前步骤和预计剩余时间
+     * 
+     * @param {Object} status - 任务状态对象
+     */
     updateProgress(status) {
-        const progress = status.progress || 0;
-        const currentStep = status.current_step || '处理中...';
-        const estimatedRemaining = status.estimated_remaining;
+        const progress = status.progress || 0;                    // 进度百分比
+        const currentStep = status.current_step || '处理中...';    // 当前执行步骤
+        const estimatedRemaining = status.estimated_remaining;    // 服务器提供的预计剩余时间
         
-        // 更新进度条
+        // ==================== 更新进度条 ====================
+        // 更新进度条的宽度和数值
         $('#progress-bar').css('width', `${progress}%`).attr('aria-valuenow', progress);
         
-        // 更新状态消息
+        // ==================== 更新状态消息 ====================
+        // 显示当前正在执行的步骤
         $('#status-message').text(currentStep);
         
-        // 更新详细信息
+        // ==================== 更新预计剩余时间 ====================
         let detailText = '';
         if (estimatedRemaining && estimatedRemaining > 0) {
+            // 优先使用服务器提供的预计时间
             const minutes = Math.floor(estimatedRemaining / 60);
             const seconds = estimatedRemaining % 60;
             if (minutes > 0) {
@@ -362,7 +516,7 @@ class MatchingApp {
                 detailText = `预计剩余: ${seconds}秒`;
             }
         } else {
-            // 根据进度估算时间
+            // 根据进度估算时间（本地计算）
             if (progress > 0 && progress < 100) {
                 const estimatedTotal = (Date.now() - this.matchingStartTime) / progress * 100;
                 const remaining = Math.max(0, estimatedTotal - (Date.now() - this.matchingStartTime));
@@ -389,10 +543,17 @@ class MatchingApp {
         $('#progress-percentage').text(`${progress.toFixed(1)}%`);
     }
     
+    /**
+     * 检查鞋模文件处理状态
+     * 
+     * 确保鞋模文件已完全处理完成，可以用于匹配
+     * 如果未处理完成，会轮询等待直到处理完成或超时
+     */
     async checkShoeProcessingStatus() {
         try {
             console.log(`检查鞋模处理状态: shoe_id=${this.currentShoeModel.id}`);
             
+            // ==================== 初始状态检查 ====================
             // 检查鞋模处理状态
             const response = await Utils.apiRequest(`/api/shoes/${this.currentShoeModel.id}/`);
             console.log('鞋模状态响应:', response);
@@ -441,6 +602,11 @@ class MatchingApp {
         }
     }
     
+    /**
+     * 加载当前任务的匹配结果
+     * 
+     * 从后端获取当前匹配任务的详细结果数据
+     */
     async loadResults() {
         try {
             const response = await Utils.apiRequest(`/api/matching/${this.currentTask.task_id}/result/`);
@@ -453,19 +619,28 @@ class MatchingApp {
         }
     }
     
+    /**
+     * 加载指定任务的匹配结果
+     * 
+     * 用于从URL参数或历史记录中加载特定任务的结果
+     * 
+     * @param {string} taskId - 任务ID
+     */
     async loadTaskResults(taskId) {
         try {
             console.log('加载任务结果:', taskId);
             
+            // ==================== 显示加载状态 ====================
             // 显示加载中状态
             $('#matching-status').removeClass('d-none');
             $('#status-message').text('正在加载任务结果...');
             $('#progress-bar').css('width', '100%').addClass('progress-bar-striped progress-bar-animated');
             
+            // ==================== 请求任务结果 ====================
             const response = await Utils.apiRequest(`/api/matching/${taskId}/result/`);
             
             if (response.success) {
-                // 设置当前任务
+                // 设置当前任务信息
                 this.currentTask = {
                     task_id: taskId,
                     status: response.data.status
@@ -496,19 +671,31 @@ class MatchingApp {
         }
     }
     
+    /**
+     * 显示匹配结果
+     * 
+     * 切换到结果展示界面，显示匹配结果和统计信息
+     * 
+     * @param {Object} data - 匹配结果数据
+     */
     showResults(data) {
+        // ==================== 切换UI状态 ====================
+        // 隐藏匹配状态，显示结果容器
         $('#matching-status').addClass('d-none');
         $('#results-container').removeClass('d-none');
         $('#result-actions').removeClass('d-none');
         
-        // 保存结果数据
+        // ==================== 保存结果数据 ====================
+        // 保存结果数据供后续操作使用
         this.currentResults = data.results;
         this.currentSummary = data.summary;
         
-        // 更新统计信息
+        // ==================== 更新统计信息 ====================
+        // 更新结果数量和处理时间
         $('#results-count').text(data.results.length);
         $('#processing-time').text(data.summary.processing_time ? data.summary.processing_time.toFixed(2) : '--');
         
+        // ==================== 渲染结果表格 ====================
         // 渲染结果表格
         this.renderResultsTable(data.results);
         
@@ -518,7 +705,16 @@ class MatchingApp {
         Utils.showNotification('匹配完成！', 'success');
     }
     
+    /**
+     * 显示匹配结果汇总信息
+     * 
+     * 在结果页面顶部显示匹配统计信息，包括各种通过标准的数量
+     * 
+     * @param {Object} summary - 匹配汇总数据
+     */
     showResultsSummary(summary) {
+        // ==================== 构建汇总HTML ====================
+        // 创建统计信息展示区域
         const summaryHtml = `
             <div class="row mb-3">
                 <div class="col-md-3 text-center">
@@ -555,13 +751,25 @@ class MatchingApp {
         $('#results-summary').html(summaryHtml);
     }
     
+    /**
+     * 渲染匹配结果表格
+     * 
+     * 将匹配结果数据渲染为HTML表格，包括状态徽章、覆盖率等信息
+     * 
+     * @param {Array} results - 匹配结果数组
+     */
     renderResultsTable(results) {
+        // ==================== 清空表格 ====================
+        // 清空现有表格内容
         const tbody = $('#results-table tbody');
         tbody.empty();
         
+        // ==================== 渲染结果行 ====================
+        // 遍历每个匹配结果，生成表格行
         results.forEach((result, index) => {
             const statusBadge = this.getStatusBadge(result);
             
+            // ==================== 计算覆盖率 ====================
             // 使用实际的覆盖率，如果没有则基于P15间隙估算
             let coverageRate = 0;
             if (result.inside_ratio !== undefined && result.inside_ratio !== null) {
@@ -606,6 +814,14 @@ class MatchingApp {
         });
     }
     
+    /**
+     * 获取状态徽章HTML
+     * 
+     * 根据匹配结果生成相应的状态徽章，用于在表格中显示
+     * 
+     * @param {Object} result - 匹配结果对象
+     * @returns {string} 状态徽章的HTML字符串
+     */
     getStatusBadge(result) {
         if (result.pass_p15) {
             return '<span class="badge status-pass"><i class="fas fa-check"></i> 通过</span>';
@@ -616,7 +832,16 @@ class MatchingApp {
         }
     }
     
+    /**
+     * 显示结果详情
+     * 
+     * 打开结果详情模态框，显示指定索引的匹配结果详细信息
+     * 
+     * @param {number} index - 结果索引
+     */
     showResultDetail(index) {
+        // ==================== 验证结果数据 ====================
+        // 检查结果数据是否存在
         if (!this.currentResults || !this.currentResults[index]) {
             Utils.showNotification('结果数据不存在', 'error');
             return;
@@ -706,8 +931,17 @@ class MatchingApp {
         }
     }
     
+    /**
+     * 加载热力图并检查生成状态
+     * 
+     * 检查热力图的生成状态，如果正在生成则显示进度，如果已完成则加载热力图
+     * 
+     * @param {string} taskId - 任务ID
+     * @param {number} resultIndex - 结果索引
+     */
     async loadHeatmapWithStatus(taskId, resultIndex) {
         try {
+            // ==================== 检查热力图状态 ====================
             // 首先检查热力图生成状态
             const statusResponse = await Utils.apiRequest(`/api/matching/${taskId}/heatmap-status/`);
             
@@ -716,6 +950,7 @@ class MatchingApp {
                 const heatmapData = statusResponse.data.heatmap_data || {};
                 
                 if (heatmapStatus === 'not_started') {
+                    // ==================== 热力图未开始 ====================
                     $('#heatmap-preview').html(`
                         <div class="d-flex align-items-center justify-content-center h-100">
                             <div class="text-center text-muted">
@@ -818,15 +1053,33 @@ class MatchingApp {
         }
     }
     
+    /**
+     * 显示错误信息
+     * 
+     * 当匹配过程中出现错误时，切换回默认状态并显示错误通知
+     * 
+     * @param {string} message - 错误消息
+     */
     showError(message) {
+        // ==================== 恢复UI状态 ====================
+        // 隐藏匹配状态，显示默认状态
         $('#matching-status').addClass('d-none');
         $('#default-state').removeClass('d-none');
+        
+        // ==================== 显示错误通知 ====================
+        // 显示错误通知
         Utils.showNotification(message, 'error');
     }
     
     // ========== 鞋模上传功能 ==========
     
+    /**
+     * 设置拖拽上传功能
+     * 
+     * 为文件上传区域添加拖拽上传支持，包括拖拽悬停效果和文件处理
+     */
     setupDragAndDrop() {
+        // ==================== 拖拽悬停效果 ====================
         // 使用事件委托避免重复绑定
         $(document).off('dragover', '#shoe-upload-zone').on('dragover', '#shoe-upload-zone', (e) => {
             e.preventDefault();
@@ -834,27 +1087,38 @@ class MatchingApp {
             $('#shoe-upload-zone').addClass('dragover');
         });
         
+        // ==================== 拖拽离开效果 ====================
         $(document).off('dragleave', '#shoe-upload-zone').on('dragleave', '#shoe-upload-zone', (e) => {
             e.preventDefault();
             e.stopPropagation();
             $('#shoe-upload-zone').removeClass('dragover');
         });
         
+        // ==================== 文件拖拽放置 ====================
         $(document).off('drop', '#shoe-upload-zone').on('drop', '#shoe-upload-zone', (e) => {
             e.preventDefault();
             e.stopPropagation();
             $('#shoe-upload-zone').removeClass('dragover');
             
+            // 处理拖拽的文件
             const files = e.originalEvent.dataTransfer.files;
             if (files.length > 0) {
                 this.handleShoeFile(files[0]);
             }
         });
         
+        // ==================== 清理冲突事件 ====================
         // 移除可能导致冲突的click事件
         $(document).off('click', '#shoe-upload-zone');
     }
     
+    /**
+     * 处理鞋模文件选择事件
+     * 
+     * 当用户通过文件选择对话框选择文件时触发
+     * 
+     * @param {Event} e - 文件选择事件
+     */
     handleShoeFileSelect(e) {
         const files = Array.from(e.target.files);
         if (files.length > 0) {
@@ -862,17 +1126,27 @@ class MatchingApp {
         }
     }
     
+    /**
+     * 处理多个鞋模文件
+     * 
+     * 验证文件格式和大小，支持批量上传
+     * 
+     * @param {File[]} files - 文件对象数组
+     */
     handleShoeFiles(files) {
+        // ==================== 文件验证 ====================
         // 验证所有文件
         const validFiles = [];
         const errors = [];
         
         for (let file of files) {
+            // 检查文件格式
             if (!file.name.toLowerCase().endsWith('.3dm')) {
                 errors.push(`${file.name}: 不是.3dm格式`);
                 continue;
             }
             
+            // 检查文件大小
             if (file.size > CONFIG.UPLOAD_MAX_SIZE) {
                 errors.push(`${file.name}: 文件过大 (${Utils.formatFileSize(file.size)})`);
                 continue;
@@ -906,7 +1180,16 @@ class MatchingApp {
         }
     }
     
+    /**
+     * 显示文件列表
+     * 
+     * 在文件上传界面显示已选择的文件列表，包括文件名、大小和操作按钮
+     * 
+     * @param {File[]} files - 文件对象数组
+     */
     displayFileList(files) {
+        // ==================== 生成文件列表HTML ====================
+        // 为每个文件创建列表项，包含文件名、大小和删除按钮
         const fileListHtml = files.map((file, index) => `
             <div class="list-group-item d-flex justify-content-between align-items-center">
                 <div>
@@ -923,18 +1206,33 @@ class MatchingApp {
             </div>
         `).join('');
         
+        // ==================== 更新UI ====================
+        // 更新文件列表和文件计数
         $('#shoe-file-list').html(fileListHtml);
         $('#file-count-badge').text(files.length);
     }
     
+    /**
+     * 移除文件
+     * 
+     * 从已选择的文件列表中移除指定索引的文件
+     * 
+     * @param {number} index - 要移除的文件索引
+     */
     removeFile(index) {
         if (this.selectedShoeFiles && index < this.selectedShoeFiles.length) {
+            // ==================== 移除文件 ====================
+            // 从数组中移除指定文件
             this.selectedShoeFiles.splice(index, 1);
             
             if (this.selectedShoeFiles.length === 0) {
+                // ==================== 清空状态 ====================
+                // 如果没有文件了，隐藏文件信息区域
                 $('#shoe-file-info').addClass('d-none');
                 $('#confirm-shoe-upload').prop('disabled', true);
             } else {
+                // ==================== 更新显示 ====================
+                // 重新显示文件列表
                 this.displayFileList(this.selectedShoeFiles);
                 $('#confirm-shoe-upload').text(
                     this.selectedShoeFiles.length > 1 ? 
@@ -1048,7 +1346,13 @@ class MatchingApp {
         }
     }
     
+    /**
+     * 显示批量匹配选项Modal
+     * 
+     * 当用户上传了多个鞋模文件时，提供批量匹配或单独匹配的选择
+     */
     showBatchMatchingOptions() {
+        // ==================== 构建Modal HTML ====================
         // 显示批量匹配选项
         const modalHtml = `
             <div class="modal fade" id="batchMatchingModal" tabindex="-1">
@@ -1108,7 +1412,14 @@ class MatchingApp {
         $('#batchMatchingModal').modal('show');
     }
     
+    /**
+     * 开始队列匹配
+     * 
+     * 启动批量匹配流程，依次处理队列中的所有鞋模文件
+     */
     async startQueueMatching() {
+        // ==================== 验证队列数据 ====================
+        // 检查是否有可用的鞋模文件
         if (!this.uploadedShoeModels || this.uploadedShoeModels.length === 0) {
             Utils.showNotification('没有可用的鞋模文件', 'error');
             return;
@@ -1183,7 +1494,7 @@ class MatchingApp {
             
             if (response.success) {
                 this.currentTask = response.data;
-                this.startPolling();
+                this.startPolling(this.currentTask);
             } else {
                 throw new Error(response.message || '启动匹配失败');
             }
@@ -1205,10 +1516,16 @@ class MatchingApp {
         }
     }
     
-    async handleQueueTaskComplete() {
+    /**
+     * 处理队列任务完成
+     * 
+     * 当队列中的某个匹配任务完成时，加载结果并继续下一个任务
+     */
+    async handleQueueTaskComplete(currentTask) {
         try {
+            // ==================== 加载任务结果 ====================
             // 加载当前任务结果
-            const response = await Utils.apiRequest(`/api/matching/${this.currentTask.task_id}/result/`);
+            const response = await Utils.apiRequest(`/api/matching/${currentTask.task_id}/result/`);
             
             if (response.success) {
                 const currentShoe = this.queuedShoeModels[this.currentQueueIndex];
@@ -1223,6 +1540,7 @@ class MatchingApp {
             console.error('获取队列任务结果失败:', error);
         }
         
+        // ==================== 继续下一个任务 ====================
         // 继续下一个鞋模
         this.currentQueueIndex++;
         setTimeout(() => this.processNextInQueue(), 1000);
@@ -1566,28 +1884,44 @@ class MatchingApp {
         $('#queue-results-preview').remove();
     }
     
+    /**
+     * 显示批量匹配进度
+     * 
+     * 切换到批量匹配状态界面，显示进度和当前步骤
+     */
     showBatchMatchingProgress() {
+        // ==================== 切换UI状态 ====================
         // 切换到匹配状态显示
         $('#default-state').addClass('d-none');
         $('#matching-status').removeClass('d-none');
         
+        // ==================== 更新状态信息 ====================
         // 更新状态显示
         $('#status-title').html('<i class="fas fa-layer-group me-2"></i>批量匹配进行中');
         $('#current-step').text('准备批量匹配...');
         
+        // ==================== 开始状态轮询 ====================
         // 开始轮询状态
         this.pollBatchMatchingStatus();
     }
     
+    /**
+     * 轮询批量匹配状态
+     * 
+     * 定期检查批量匹配任务的执行状态，更新进度显示
+     */
     async pollBatchMatchingStatus() {
         if (!this.currentBatchTask) return;
         
         try {
+            // ==================== 获取状态信息 ====================
+            // 请求批量匹配任务状态
             const response = await Utils.apiRequest(`/api/matching/batch/${this.currentBatchTask.batch_id}/status/`);
             
             if (response.success) {
                 const data = response.data;
                 
+                // ==================== 更新进度显示 ====================
                 // 更新进度
                 $('#progress-bar').css('width', `${data.progress}%`).text(`${data.progress}%`);
                 $('#current-step').text(data.current_step);
@@ -1688,10 +2022,18 @@ class MatchingApp {
         this.renderBatchResultsTable();
     }
     
+    /**
+     * 渲染批量匹配结果表格
+     * 
+     * 将批量匹配的所有结果渲染为HTML表格
+     */
     renderBatchResultsTable() {
         const results = this.currentBatchResults.all_results || [];
         
+        // ==================== 生成表格行 ====================
+        // 为每个结果生成表格行HTML
         const tableHtml = results.map((result, index) => {
+            // ==================== 计算覆盖率 ====================
             // 计算覆盖率
             let coverageRate = 0;
             if (result.inside_ratio !== undefined && result.inside_ratio !== null) {
@@ -1760,24 +2102,41 @@ class MatchingApp {
         }
     }
     
+    /**
+     * 更新鞋模显示信息
+     * 
+     * 在界面上显示当前选中鞋模的详细信息
+     */
     updateShoeModelDisplay() {
         if (this.currentShoeModel) {
+            // ==================== 更新鞋模信息 ====================
+            // 显示鞋模名称、体积和文件大小
             $('#shoe-model-name').text(this.currentShoeModel.name);
             $('#shoe-model-volume').text(`体积: ${this.currentShoeModel.volume?.toFixed(0) || '--'} mm³`);
             $('#shoe-model-size').text(`大小: ${this.currentShoeModel.file_size_mb}MB`);
             $('#shoe-model-info').removeClass('d-none');
             
+            // ==================== 更新匹配按钮 ====================
+            // 更新匹配按钮状态
             this.updateMatchingButton();
         }
     }
     
+    /**
+     * 预览鞋模3D模型
+     * 
+     * 在3D预览模态框中显示当前鞋模的3D可视化
+     */
     async previewShoeModel() {
         if (!this.currentShoeModel) return;
         
         try {
+            // ==================== 请求3D预览数据 ====================
+            // 请求鞋模的3D预览数据
             const response = await Utils.apiRequest(`/api/visualization/preview/${this.currentShoeModel.id}/?type=shoe`);
             
             if (response.success) {
+                // ==================== 显示3D预览 ====================
                 // 显示3D预览Modal
                 $('#preview-3d-content').html(response.data.html);
                 $('#model-info #vertex-count').text(response.data.metadata.vertex_count || '--');
@@ -1793,7 +2152,13 @@ class MatchingApp {
     
     // ========== 粗胚管理功能 ==========
     
+    /**
+     * 显示粗胚上传界面
+     * 
+     * 打开粗胚批量上传模态框，允许用户选择多个粗胚文件进行上传
+     */
     showBlankUpload() {
+        // ==================== 构建上传界面HTML ====================
         // 显示粗胚批量上传界面
         const uploadHtml = `
             <div class="modal fade" id="blankUploadModal" tabindex="-1">
@@ -2655,11 +3020,19 @@ class MatchingApp {
     
     // ========== 匹配参数管理 ==========
     
+    /**
+     * 验证匹配参数
+     * 
+     * 检查用户输入的匹配参数是否有效，包括间隙要求和阈值设置
+     * 
+     * @returns {boolean} 参数是否有效
+     */
     validateMatchingParams() {
         const clearance = parseFloat($('#clearance').val());
         const threshold = $('#threshold').val();
         
-        // 验证间隙要求
+        // ==================== 验证间隙要求 ====================
+        // 检查间隙值是否在有效范围内
         if (isNaN(clearance) || clearance < 0.5 || clearance > 10.0) {
             $('#clearance').addClass('is-invalid');
             this.showParamError('间隙要求必须在0.5-10.0mm之间');
@@ -2668,14 +3041,24 @@ class MatchingApp {
             $('#clearance').removeClass('is-invalid');
         }
         
-        // 更新阈值说明
+        // ==================== 更新阈值说明 ====================
+        // 根据选择的阈值更新说明文字
         this.updateThresholdDescription(threshold);
         
+        // 更新匹配按钮状态
         this.updateMatchingButton();
         return true;
     }
     
+    /**
+     * 更新阈值参数说明
+     * 
+     * 根据用户选择的阈值标准显示相应的说明文字
+     * 
+     * @param {string} threshold - 阈值标准
+     */
     updateThresholdDescription(threshold) {
+        // 阈值标准说明映射
         const descriptions = {
             'min': '严格标准：所有点间隙 ≥ 设定值',
             'p10': 'P10标准：90%的点间隙 ≥ 设定值',
@@ -2693,6 +3076,11 @@ class MatchingApp {
         $('#threshold-description').text(description);
     }
     
+    /**
+     * 切换缩放选项显示
+     * 
+     * 根据是否启用缩放来控制相关参数的显示/隐藏
+     */
     toggleScalingOptions() {
         const isEnabled = $('#enableScaling').is(':checked');
         $('#maxScale').prop('disabled', !isEnabled);
@@ -2720,20 +3108,38 @@ class MatchingApp {
         return true;
     }
     
+    /**
+     * 显示参数错误提示
+     * 
+     * 在界面上显示参数验证错误信息，3秒后自动隐藏
+     * 
+     * @param {string} message - 错误消息
+     */
     showParamError(message) {
+        // ==================== 创建错误提示元素 ====================
         // 显示参数错误提示
         if ($('#param-error').length === 0) {
             $('#advancedOptions').after('<div id="param-error" class="alert alert-warning alert-sm mt-2"></div>');
         }
         
+        // ==================== 显示错误信息 ====================
+        // 设置错误消息内容
         $('#param-error').html(`<i class="fas fa-exclamation-triangle me-2"></i>${message}`);
         
+        // ==================== 自动隐藏 ====================
         // 3秒后自动隐藏
         setTimeout(() => {
             $('#param-error').fadeOut();
         }, 3000);
     }
     
+    /**
+     * 获取匹配参数
+     * 
+     * 从表单中收集所有匹配参数，用于发送到后端
+     * 
+     * @returns {Object} 匹配参数字典
+     */
     getMatchingParams() {
         return {
             clearance: parseFloat($('#clearance').val()),
@@ -2830,7 +3236,13 @@ class MatchingApp {
     
     // ========== 导出功能 ==========
     
+    /**
+     * 导出匹配报告
+     * 
+     * 根据当前状态决定导出单个匹配结果还是批量匹配结果
+     */
     exportReport() {
+        // ==================== 检查导出数据 ====================
         // 检查是否有队列结果或单个结果
         if (this.completedMatches && this.completedMatches.length > 0) {
             // 导出队列匹配结果
@@ -2843,8 +3255,14 @@ class MatchingApp {
         }
     }
     
+    /**
+     * 导出单个匹配结果报告
+     * 
+     * 将当前匹配任务的结果导出为JSON格式的报告文件
+     */
     exportSingleReport() {
         try {
+            // ==================== 准备导出数据 ====================
             // 创建导出数据
             const exportData = {
                 task_info: {
@@ -2857,6 +3275,7 @@ class MatchingApp {
                 results: this.currentResults
             };
             
+            // ==================== 创建下载文件 ====================
             // 创建下载链接
             const dataStr = JSON.stringify(exportData, null, 2);
             const dataBlob = new Blob([dataStr], {type: 'application/json'});
@@ -3001,21 +3420,26 @@ class MatchingApp {
 // 全局变量
 let matchingApp;
 
-// 页面加载完成后初始化
+// ==================== 应用初始化 ====================
+// 页面加载完成后初始化匹配应用
 $(document).ready(function() {
     console.log('初始化匹配应用...');
     
-    // 防止重复初始化
+    // ==================== 防止重复初始化 ====================
+    // 防止重复初始化，避免内存泄漏和事件重复绑定
     if (window.matchingApp) {
         console.log('匹配应用已存在，跳过初始化');
         return;
     }
     
-    // 延迟初始化，确保所有元素都已加载
+    // ==================== 延迟初始化 ====================
+    // 延迟初始化，确保所有DOM元素都已加载完成
     setTimeout(() => {
         try {
+            // 创建全局匹配应用实例
             window.matchingApp = new MatchingApp();
-            matchingApp = window.matchingApp; // 保持向后兼容
+            matchingApp = window.matchingApp; // 保持向后兼容性
+            
             console.log('匹配应用初始化完成');
         } catch (error) {
             console.error('匹配应用初始化失败:', error);
