@@ -50,6 +50,16 @@ def process_blank_file(blank_id):
                 blank.processing_status = 'completed'
                 blank.is_processed = True
                 
+                # 触发LOD处理（异步）
+                try:
+                    from utils.lod_processing_tasks import process_model_lod
+                    logger.info(f"启动LOD处理任务: {blank_id}")
+                    process_model_lod.delay(blank_id, 'blank')
+                except ImportError as e:
+                    logger.warning(f"无法启动LOD处理: {e}")
+                except Exception as e:
+                    logger.error(f"启动LOD处理失败: {e}")
+                
             else:
                 blank.processing_status = 'failed'
                 logger.error(f"Failed to process blank {blank_id}: Invalid 3DM data")

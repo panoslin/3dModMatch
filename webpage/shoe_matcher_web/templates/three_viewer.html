@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D模型预览 - Three.js渲染器</title>
+    
+    <!-- Three.js依赖 - 使用稳定版本 -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.140.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.140.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.140.0/examples/js/loaders/GLTFLoader.js"></script>
+    
+    <!-- 本地Three.js查看器 -->
+    <script src="/static/js/three-model-viewer.js"></script>
+    <script src="/static/js/enhanced-controls.js"></script>
+    <script src="/static/js/advanced-model-viewer.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: #f8f9fa;
+        }
+        
+        /* 主容器 */
+        .viewer-container {
+            display: flex;
+            height: 100vh;
+        }
+        
+        /* 3D视口 */
+        .viewport {
+            flex: 1;
+            position: relative;
+            min-height: 400px;
+            background: white;
+            border-radius: 8px;
+            margin: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        /* 控制面板 */
+        .control-panel {
+            width: 280px;
+            background: white;
+            border-left: 1px solid #dee2e6;
+            overflow-y: auto;
+            padding: 16px;
+        }
+        
+        .control-section {
+            margin-bottom: 24px;
+        }
+        
+        .control-section h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        /* LOD控制 */
+        .lod-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .lod-button {
+            padding: 10px 12px;
+            border: 2px solid #e9ecef;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: left;
+            position: relative;
+        }
+        
+        .lod-button:hover {
+            border-color: #007bff;
+            background: #f8f9ff;
+        }
+        
+        .lod-button.active {
+            border-color: #007bff;
+            background: #007bff;
+            color: white;
+        }
+        
+        .lod-button.loading {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .lod-button .title {
+            font-weight: 600;
+            font-size: 13px;
+        }
+        
+        .lod-button .description {
+            font-size: 11px;
+            opacity: 0.8;
+            margin-top: 2px;
+        }
+        
+        .lod-button .badge {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: #28a745;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 10px;
+        }
+        
+        .lod-button.loading .badge {
+            background: #ffc107;
+        }
+        
+        /* 质量控制 */
+        .quality-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .quality-button {
+            padding: 8px 12px;
+            border: 1px solid #dee2e6;
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+        
+        .quality-button:hover {
+            background: #f8f9fa;
+        }
+        
+        .quality-button.active {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        
+        /* 视角预设控制 */
+        .view-presets {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+        
+        .view-button {
+            padding: 8px 10px;
+            border: 1px solid #dee2e6;
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+        
+        .view-button:hover {
+            background: #e3f2fd;
+            border-color: #2196f3;
+        }
+        
+        .view-button:active {
+            transform: translateY(1px);
+        }
+        
+        .view-button.active {
+            background: #2196f3;
+            color: white;
+            border-color: #2196f3;
+        }
+        
+        /* 交互信息 */
+        .interaction-info {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid #e9ecef;
+        }
+        
+        .info-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 11px;
+        }
+        
+        .info-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .info-icon {
+            width: 20px;
+            text-align: center;
+            margin-right: 8px;
+            font-size: 14px;
+        }
+        
+        .info-text {
+            color: #495057;
+            flex: 1;
+        }
+        
+        /* 状态信息 */
+        .status-info {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+        
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+        
+        .status-row:last-child {
+            margin-bottom: 0;
+        }
+        
+        .status-label {
+            color: #6c757d;
+        }
+        
+        .status-value {
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        .status-value.good {
+            color: #28a745;
+        }
+        
+        .status-value.warning {
+            color: #ffc107;
+        }
+        
+        .status-value.error {
+            color: #dc3545;
+        }
+        
+        /* 工具栏 */
+        .toolbar {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            display: flex;
+            gap: 8px;
+            z-index: 100;
+        }
+        
+        .tool-button {
+            width: 36px;
+            height: 36px;
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 16px;
+        }
+        
+        .tool-button:hover {
+            background: white;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .viewer-container {
+                flex-direction: column;
+            }
+            
+            .control-panel {
+                width: 100%;
+                order: -1;
+                max-height: 200px;
+            }
+            
+            .viewport {
+                min-height: 300px;
+            }
+        }
+        
+        /* 加载和错误状态样式已在JavaScript中定义 */
+    </style>
+</head>
+<body>
+    <div class="viewer-container">
+        <!-- 3D视口 -->
+        <div class="viewport" id="three-viewport">
+            <!-- 工具栏 -->
+            <div class="toolbar">
+                <button class="tool-button" id="reset-camera" title="重置视角">
+                    🏠
+                </button>
+                <button class="tool-button" id="fullscreen" title="全屏">
+                    ⛶
+                </button>
+                <button class="tool-button" id="screenshot" title="截图">
+                    📷
+                </button>
+            </div>
+        </div>
+        
+        <!-- 控制面板 -->
+        <div class="control-panel">
+            <!-- LOD级别控制 -->
+            <div class="control-section">
+                <h3>精度级别 (LOD)</h3>
+                <div class="lod-controls" id="lod-controls">
+                    <button class="lod-button" data-lod="preview">
+                        <div class="title">预览级别</div>
+                        <div class="description">快速加载，适合概览</div>
+                        <span class="badge" style="display: none;">缓存</span>
+                    </button>
+                    <button class="lod-button" data-lod="detail">
+                        <div class="title">详细级别</div>
+                        <div class="description">平衡质量与性能</div>
+                        <span class="badge" style="display: none;">缓存</span>
+                    </button>
+                    <button class="lod-button" data-lod="full">
+                        <div class="title">完整级别</div>
+                        <div class="description">最高质量显示</div>
+                        <span class="badge" style="display: none;">缓存</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 渲染质量控制 -->
+            <div class="control-section">
+                <h3>渲染质量</h3>
+                <div class="quality-controls" id="quality-controls">
+                    <button class="quality-button" data-quality="low">
+                        低质量 - 最佳性能
+                    </button>
+                    <button class="quality-button active" data-quality="medium">
+                        中等质量 - 平衡
+                    </button>
+                    <button class="quality-button" data-quality="high">
+                        高质量 - 最佳视觉
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 视角预设 -->
+            <div class="control-section">
+                <h3>预设视角</h3>
+                <div class="view-presets" id="view-presets">
+                    <button class="view-button" data-preset="front">前视图</button>
+                    <button class="view-button" data-preset="back">后视图</button>
+                    <button class="view-button" data-preset="left">左视图</button>
+                    <button class="view-button" data-preset="right">右视图</button>
+                    <button class="view-button" data-preset="top">俯视图</button>
+                    <button class="view-button" data-preset="isometric">等角视图</button>
+                </div>
+            </div>
+            
+            <!-- 交互控制 -->
+            <div class="control-section">
+                <h3>交互功能</h3>
+                <div class="interaction-info">
+                    <div class="info-item">
+                        <span class="info-icon">👆</span>
+                        <span class="info-text">单指拖拽旋转</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-icon">🤏</span>
+                        <span class="info-text">双指缩放</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-icon">🔄</span>
+                        <span class="info-text">双击重置视角</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-icon">⌨️</span>
+                        <span class="info-text">按 H 查看快捷键</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 状态信息 -->
+            <div class="control-section">
+                <h3>性能状态</h3>
+                <div class="status-info" id="status-info">
+                    <div class="status-row">
+                        <span class="status-label">帧率:</span>
+                        <span class="status-value" id="fps-value">-- FPS</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="status-label">当前LOD:</span>
+                        <span class="status-value" id="current-lod">--</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="status-label">渲染质量:</span>
+                        <span class="status-value" id="current-quality">medium</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="status-label">模型状态:</span>
+                        <span class="status-value" id="model-status">未加载</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 模型信息 -->
+            <div class="control-section">
+                <h3>模型信息</h3>
+                <div class="status-info" id="model-info">
+                    <div class="status-row">
+                        <span class="status-label">顶点数:</span>
+                        <span class="status-value" id="vertex-count">--</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="status-label">面数:</span>
+                        <span class="status-value" id="face-count">--</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="status-label">文件大小:</span>
+                        <span class="status-value" id="file-size">--</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="status-label">压缩比:</span>
+                        <span class="status-value" id="compression-ratio">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 从Django上下文获取模型配置
+        const modelType = '{{ model_type }}';
+        const modelId = {{ model_id }};
+        
+        if (!modelId) {
+            document.body.innerHTML = '<div style="padding: 40px; text-align: center; color: #dc3545;">错误：缺少模型ID参数</div>';
+            throw new Error('模型ID是必需的');
+        }
+        
+        console.log(`初始化Three.js查看器: ${modelType} #${modelId}`);
+        
+        // 全局变量
+        let viewer = null;
+        let currentModelInfo = null;
+        
+        // 初始化查看器
+        async function initViewer() {
+            try {
+                // 创建高级查看器
+                viewer = new AdvancedModelViewer('#three-viewport', {
+                    modelType: modelType,
+                    modelId: modelId
+                });
+                
+                // 设置事件监听器
+                setupEventListeners();
+                
+                // 启动查看器
+                await viewer.start();
+                
+                console.log('Three.js查看器初始化成功');
+                
+            } catch (error) {
+                console.error('查看器初始化失败:', error);
+                showError('查看器初始化失败: ' + error.message);
+            }
+        }
+        
+        // 设置事件监听器
+        function setupEventListeners() {
+            const viewport = document.getElementById('three-viewport');
+            
+            // LOD切换事件
+            viewport.addEventListener('threeviewer:lod-switch', (event) => {
+                updateLODUI(event.detail.to, event.detail.levels);
+            });
+            
+            // 性能更新事件
+            viewport.addEventListener('threeviewer:performance-update', (event) => {
+                updatePerformanceUI(event.detail);
+            });
+            
+            // 质量变化事件
+            viewport.addEventListener('threeviewer:quality-changed', (event) => {
+                updateQualityUI(event.detail.to);
+            });
+            
+            // 模型加载事件
+            viewport.addEventListener('threeviewer:model-loaded', (event) => {
+                updateModelInfo(event.detail);
+            });
+            
+            // LOD UI更新事件
+            viewport.addEventListener('threeviewer:lod-ui-update', (event) => {
+                updateLODCache(event.detail);
+            });
+            
+            // 错误事件
+            viewport.addEventListener('threeviewer:lod-error', (event) => {
+                console.error('LOD错误:', event.detail);
+            });
+            
+            // LOD按钮点击
+            document.getElementById('lod-controls').addEventListener('click', (event) => {
+                const button = event.target.closest('.lod-button');
+                if (button && !button.classList.contains('loading')) {
+                    const lod = button.dataset.lod;
+                    switchLOD(lod);
+                }
+            });
+            
+            // 质量按钮点击
+            document.getElementById('quality-controls').addEventListener('click', (event) => {
+                const button = event.target.closest('.quality-button');
+                if (button) {
+                    const quality = button.dataset.quality;
+                    setQuality(quality);
+                }
+            });
+            
+            // 视角预设按钮点击
+            document.getElementById('view-presets').addEventListener('click', (event) => {
+                const button = event.target.closest('.view-button');
+                if (button && viewer && viewer.setViewPreset) {
+                    const preset = button.dataset.preset;
+                    setViewPreset(preset);
+                }
+            });
+            
+            // 工具栏按钮
+            document.getElementById('reset-camera').addEventListener('click', resetCamera);
+            document.getElementById('fullscreen').addEventListener('click', toggleFullscreen);
+            document.getElementById('screenshot').addEventListener('click', takeScreenshot);
+        }
+        
+        // LOD切换
+        async function switchLOD(level) {
+            if (!viewer) return;
+            
+            const button = document.querySelector(`[data-lod="${level}"]`);
+            button.classList.add('loading');
+            
+            try {
+                const success = await viewer.switchLOD(level);
+                if (success) {
+                    updateLODButtons(level);
+                }
+            } catch (error) {
+                console.error('LOD切换失败:', error);
+            } finally {
+                button.classList.remove('loading');
+            }
+        }
+        
+        // 设置质量
+        function setQuality(level) {
+            if (!viewer) return;
+            viewer.setQuality(level);
+            updateQualityButtons(level);
+        }
+        
+        // 设置视角预设
+        async function setViewPreset(preset) {
+            if (!viewer) return;
+            
+            const button = document.querySelector(`[data-preset="${preset}"]`);
+            if (button) {
+                const originalText = button.textContent;
+                button.textContent = '切换中...';
+                button.disabled = true;
+                
+                try {
+                    await viewer.setViewPreset(preset);
+                    updateViewButtons(preset);
+                } catch (error) {
+                    console.error('视角切换失败:', error);
+                } finally {
+                    button.textContent = originalText;
+                    button.disabled = false;
+                }
+            }
+        }
+        
+        // 更新LOD按钮状态
+        function updateLODButtons(activeLevel) {
+            const buttons = document.querySelectorAll('.lod-button');
+            buttons.forEach(button => {
+                if (button.dataset.lod === activeLevel) {
+                    button.classList.add('active');
+                } else {
+                    button.classList.remove('active');
+                }
+            });
+        }
+        
+        // 更新质量按钮状态
+        function updateQualityButtons(activeLevel) {
+            const buttons = document.querySelectorAll('.quality-button');
+            buttons.forEach(button => {
+                if (button.dataset.quality === activeLevel) {
+                    button.classList.add('active');
+                } else {
+                    button.classList.remove('active');
+                }
+            });
+        }
+        
+        // 更新视角按钮状态
+        function updateViewButtons(activePreset) {
+            const buttons = document.querySelectorAll('.view-button');
+            buttons.forEach(button => {
+                if (button.dataset.preset === activePreset) {
+                    button.classList.add('active');
+                } else {
+                    button.classList.remove('active');
+                }
+            });
+            
+            // 短暂高亮显示
+            const activeButton = document.querySelector(`[data-preset="${activePreset}"]`);
+            if (activeButton) {
+                setTimeout(() => {
+                    activeButton.classList.remove('active');
+                }, 2000);
+            }
+        }
+        
+        // 更新LOD UI
+        function updateLODUI(currentLevel, availableLevels) {
+            document.getElementById('current-lod').textContent = currentLevel;
+            updateLODButtons(currentLevel);
+            
+            // 显示/隐藏不可用的级别
+            const buttons = document.querySelectorAll('.lod-button');
+            buttons.forEach(button => {
+                const level = button.dataset.lod;
+                if (!availableLevels.includes(level)) {
+                    button.style.opacity = '0.5';
+                    button.style.pointerEvents = 'none';
+                }
+            });
+        }
+        
+        // 更新性能UI
+        function updatePerformanceUI(data) {
+            const fpsElement = document.getElementById('fps-value');
+            fpsElement.textContent = `${data.fps} FPS`;
+            
+            // 根据FPS设置颜色
+            fpsElement.className = 'status-value';
+            if (data.fps >= 50) {
+                fpsElement.classList.add('good');
+            } else if (data.fps >= 30) {
+                fpsElement.classList.add('warning');
+            } else {
+                fpsElement.classList.add('error');
+            }
+        }
+        
+        // 更新质量UI
+        function updateQualityUI(quality) {
+            document.getElementById('current-quality').textContent = quality;
+            updateQualityButtons(quality);
+        }
+        
+        // 更新LOD缓存状态
+        function updateLODCache(data) {
+            const buttons = document.querySelectorAll('.lod-button');
+            buttons.forEach(button => {
+                const level = button.dataset.lod;
+                const badge = button.querySelector('.badge');
+                
+                if (data.cache.includes(level)) {
+                    badge.style.display = 'block';
+                    badge.textContent = '缓存';
+                } else {
+                    badge.style.display = 'none';
+                }
+            });
+        }
+        
+        // 更新模型信息
+        function updateModelInfo(data) {
+            document.getElementById('model-status').textContent = '已加载';
+            document.getElementById('model-status').className = 'status-value good';
+            
+            // 这些信息需要从API获取
+            fetchModelMetadata();
+        }
+        
+        // 获取模型元数据
+        async function fetchModelMetadata() {
+            try {
+                const response = await fetch(`/api/lod/${modelType}/${modelId}/data/?format=metadata`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const model = data.data.model;
+                    const lodInfo = data.data.lod_info;
+                    
+                    document.getElementById('vertex-count').textContent = model.vertex_count?.toLocaleString() || '--';
+                    document.getElementById('face-count').textContent = model.face_count?.toLocaleString() || '--';
+                    document.getElementById('file-size').textContent = model.file_size_mb ? `${model.file_size_mb} MB` : '--';
+                    document.getElementById('compression-ratio').textContent = lodInfo.compression_ratio ? `${(lodInfo.compression_ratio * 100).toFixed(1)}%` : '--';
+                }
+            } catch (error) {
+                console.error('获取模型元数据失败:', error);
+            }
+        }
+        
+        // 工具函数
+        function resetCamera() {
+            if (viewer) {
+                // 使用增强控制器的重置功能
+                if (viewer.enhancedControls && viewer.enhancedControls.resetView) {
+                    viewer.enhancedControls.resetView();
+                } else if (viewer.model) {
+                    viewer._fitCameraToModel();
+                }
+            }
+        }
+        
+        function toggleFullscreen() {
+            const viewport = document.getElementById('three-viewport');
+            if (!document.fullscreenElement) {
+                viewport.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        function takeScreenshot() {
+            if (viewer && viewer.renderer) {
+                const canvas = viewer.renderer.domElement;
+                const link = document.createElement('a');
+                link.download = `model_${modelType}_${modelId}_${Date.now()}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            }
+        }
+        
+        function showError(message) {
+            const viewport = document.getElementById('three-viewport');
+            viewport.innerHTML = `
+                <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #dc3545;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+                        <div style="font-size: 18px; margin-bottom: 8px;">加载失败</div>
+                        <div style="color: #6c757d;">${message}</div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', initViewer);
+        
+        // 页面卸载时清理
+        window.addEventListener('beforeunload', () => {
+            if (viewer) {
+                viewer.dispose();
+            }
+        });
+    </script>
+</body>
+</html>

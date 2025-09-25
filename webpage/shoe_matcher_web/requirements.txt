@@ -16,6 +16,7 @@ gunicorn==21.2.0
 numpy==1.26.4
 trimesh==3.23.5
 rhino3dm==8.17.0
+pygltflib==1.16.2
 plotly==6.3.0
 
 # 开发工具

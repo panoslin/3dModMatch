@@ -14,6 +14,8 @@ urlpatterns = [
     path('api/shoes/', include('apps.shoes.urls')),
     path('api/matching/', include('apps.matching.urls')),
     path('api/visualization/', include('apps.visualization.urls')),
+    # LOD系统API
+    path('api/', include('apps.api.urls')),
 ]
 
 # 静态文件服务（Docker环境中总是启用）

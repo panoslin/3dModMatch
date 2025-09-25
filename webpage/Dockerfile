@@ -42,19 +42,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # 复制requirements文件并安装Python依赖
-COPY webpage/shoe_matcher_web/requirements.txt /app/
+COPY shoe_matcher_web/requirements.txt /app/
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# 复制预构建的库文件和头文件（参考hybrid/Dockerfile方式）
-COPY hybrid/docker-extract/libOpen3D.so* /usr/local/lib/
-COPY hybrid/docker-extract/libOpenNURBS.so /usr/local/lib/
-COPY hybrid/docker-extract/libopennurbs* /usr/local/lib/
-COPY hybrid/docker-extract/open3d /usr/local/include/open3d
-COPY hybrid/docker-extract/OpenNURBS /usr/local/include/OpenNURBS
-COPY hybrid/docker-extract/opennurbsStatic /usr/local/include/opennurbsStatic
+# 复制预构建的库文件压缩包并解压
+COPY docker-extract.tar.gz /tmp/
+RUN cd /tmp && tar -xzf docker-extract.tar.gz \
+    && cp docker-extract/libOpen3D.so* /usr/local/lib/ \
+    && cp docker-extract/libOpenNURBS.so /usr/local/lib/ \
+    && cp docker-extract/libopennurbs* /usr/local/lib/ \
+    && cp -r docker-extract/open3d /usr/local/include/ \
+    && cp -r docker-extract/OpenNURBS /usr/local/include/ \
+    && cp -r docker-extract/opennurbsStatic /usr/local/include/ \
+    && rm -rf /tmp/docker-extract.tar.gz /tmp/docker-extract
 
-# 复制编译好的 C++ 模块
-COPY hybrid/build/cppcore.cpython-310-x86_64-linux-gnu.so /usr/local/lib/python3.10/dist-packages/
+# 复制编译好的Python扩展模块
+COPY cppcore.cpython-310-x86_64-linux-gnu.so /usr/local/lib/python3.10/dist-packages/
 
 # 创建符号链接和更新库路径（参考hybrid方式）
 RUN ln -sf /usr/lib/x86_64-linux-gnu/libtbb.so.12 /usr/lib/x86_64-linux-gnu/libtbb.so.12.12 \
@@ -63,8 +66,8 @@ RUN ln -sf /usr/lib/x86_64-linux-gnu/libtbb.so.12 /usr/lib/x86_64-linux-gnu/libt
     && ldconfig
 
 # 复制Django项目
-COPY webpage/shoe_matcher_web/ /app/
-COPY webpage/entrypoint.sh /app/
+COPY shoe_matcher_web/ /app/
+COPY entrypoint.sh /app/
 
 # 创建必要目录
 RUN mkdir -p /app/media/{shoes,blanks,heatmaps,temp,converted} \

@@ -74,6 +74,16 @@ def process_shoe_file(shoe_id):
                 
                 logger.info(f"鞋模处理完成: {shoe_id} ({shoe.name})")
                 
+                # 触发LOD处理（异步）
+                try:
+                    from utils.lod_processing_tasks import process_model_lod
+                    logger.info(f"启动LOD处理任务: {shoe_id}")
+                    process_model_lod.delay(shoe_id, 'shoe')
+                except ImportError as e:
+                    logger.warning(f"无法启动LOD处理: {e}")
+                except Exception as e:
+                    logger.error(f"启动LOD处理失败: {e}")
+                
             else:
                 shoe.processing_status = 'failed'
                 logger.error(f"鞋模处理失败: {shoe_id}, 3DM数据无效: {data.error if hasattr(data, 'error') else '未知错误'}")

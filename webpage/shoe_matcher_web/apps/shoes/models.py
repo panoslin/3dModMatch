@@ -33,7 +33,7 @@ class ShoeModel(BaseModel):
         verbose_name="面数量"
     )
     
-    # 预览数据
+    # 预览数据 - 兼容旧系统
     preview_html = models.TextField(
         blank=True, 
         verbose_name="预览HTML"
@@ -42,6 +42,42 @@ class ShoeModel(BaseModel):
         upload_to='shoes/thumbnails/',
         null=True, blank=True,
         verbose_name="缩略图"
+    )
+    
+    # LOD (Level of Detail) 多精度文件系统
+    lod_files = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="多精度文件路径",
+        help_text="存储不同精度级别的GLB文件路径 {'preview': 'path/to/low.glb', 'detail': 'path/to/mid.glb', 'full': 'path/to/high.glb'}"
+    )
+    
+    # 几何简化和压缩数据
+    geometry_simplified = models.BooleanField(
+        default=False,
+        verbose_name="几何体已简化",
+        help_text="标记是否已生成简化的几何体"
+    )
+    compression_ratio = models.FloatField(
+        null=True, blank=True,
+        verbose_name="压缩比",
+        help_text="相对于原始文件的压缩比例 (0.0-1.0)"
+    )
+    
+    # 渲染系统配置
+    render_engine = models.CharField(
+        max_length=20,
+        choices=[
+            ('plotly', 'Plotly (传统)'),
+            ('threejs', 'Three.js (优化)'),
+        ],
+        default='plotly',
+        verbose_name="渲染引擎"
+    )
+    supports_webgl = models.BooleanField(
+        default=False,
+        verbose_name="支持WebGL渲染",
+        help_text="标记是否已生成WebGL兼容的数据格式"
     )
     
     # 用户信息
@@ -101,3 +137,86 @@ class ShoeModel(BaseModel):
         if self.file:
             return round(self.file.size / (1024 * 1024), 2)
         return 0
+    
+    # ==================== LOD系统相关方法 ==================== #
+    
+    def get_lod_file_path(self, level: str) -> str:
+        """
+        获取指定精度级别的文件路径
+        
+        Args:
+            level: 精度级别 ('preview', 'detail', 'full')
+            
+        Returns:
+            str: 文件路径，如果不存在则返回空字符串
+        """
+        if not self.lod_files:
+            return ""
+        return self.lod_files.get(level, "")
+    
+    def has_lod_level(self, level: str) -> bool:
+        """
+        检查是否存在指定精度级别的文件
+        
+        Args:
+            level: 精度级别 ('preview', 'detail', 'full')
+            
+        Returns:
+            bool: 是否存在该精度级别
+        """
+        return bool(self.get_lod_file_path(level))
+    
+    @property
+    def available_lod_levels(self) -> list:
+        """
+        获取所有可用的LOD精度级别
+        
+        Returns:
+            list: 可用的精度级别列表
+        """
+        if not self.lod_files:
+            return []
+        return [level for level, path in self.lod_files.items() if path]
+    
+    @property
+    def preferred_render_engine(self) -> str:
+        """
+        获取首选的渲染引擎
+        优先使用Three.js如果支持WebGL，否则回退到Plotly
+        
+        Returns:
+            str: 'threejs' 或 'plotly'
+        """
+        if self.supports_webgl and self.geometry_simplified:
+            return 'threejs'
+        return 'plotly'
+    
+    def is_ready_for_threejs(self) -> bool:
+        """
+        检查是否已准备好使用Three.js渲染
+        
+        Returns:
+            bool: 是否可以使用Three.js渲染
+        """
+        return (
+            self.supports_webgl and 
+            self.geometry_simplified and 
+            self.has_lod_level('preview')
+        )
+    
+    @property
+    def optimization_status(self) -> dict:
+        """
+        获取优化状态摘要
+        
+        Returns:
+            dict: 包含各项优化状态的字典
+        """
+        return {
+            'lod_generated': len(self.available_lod_levels) > 0,
+            'geometry_simplified': self.geometry_simplified,
+            'webgl_ready': self.supports_webgl,
+            'compression_ratio': self.compression_ratio,
+            'preferred_engine': self.preferred_render_engine,
+            'ready_for_production': self.is_ready_for_threejs()
+        }
