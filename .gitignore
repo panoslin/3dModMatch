@@ -8,6 +8,7 @@ __pycache__/
 *.so
 # But allow specific .so files for LFS
 !hybrid/docker-extract/libOpen3D.so.0.19.0
+!hybrid/build/cppcore.cpython-310-x86_64-linux-gnu.so
 
 # Distribution / packaging
 .Python

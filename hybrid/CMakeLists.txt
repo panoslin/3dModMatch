@@ -8,6 +8,11 @@ find_package(pybind11 CONFIG REQUIRED)
 find_package(Open3D REQUIRED)
 find_package(Eigen3 REQUIRED)
 
+# OpenNURBS
+set(OPENNURBS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/docker-extract")
+set(OPENNURBS_INCLUDE_DIR "${OPENNURBS_DIR}/OpenNURBS")
+set(OPENNURBS_LIB "${OPENNURBS_DIR}/libOpenNURBS.so")
+
 option(WITH_IGL "Enable libigl for Brep meshing" OFF)
 if (WITH_IGL)
   find_package(PkgConfig REQUIRED)
@@ -20,7 +25,12 @@ endif()
 
 pybind11_add_module(cppcore cpp/bindings.cpp)
 
-target_link_libraries(cppcore PRIVATE Open3D::Open3D Eigen3::Eigen)
+# 确保我们的 Open3D 头文件路径优先于系统安装的版本
+target_include_directories(cppcore PRIVATE 
+    ${CMAKE_CURRENT_SOURCE_DIR}/docker-extract
+    ${OPENNURBS_INCLUDE_DIR}
+)
+target_link_libraries(cppcore PRIVATE Open3D::Open3D Eigen3::Eigen ${OPENNURBS_LIB})
 
 if (MSVC)
   target_compile_options(cppcore PRIVATE /O2 /DNDEBUG /EHsc)

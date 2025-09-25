@@ -5,10 +5,22 @@
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, parser_classes
 from django.shortcuts import get_object_or_404
+from django.conf import settings
+import os
+import uuid
+from datetime import datetime
 from .models import ShoeModel
 from .serializers import ShoeModelSerializer
+
+# 导入 C++ 模块
+try:
+    import cppcore
+    CPP_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: C++ module not available: {e}")
+    CPP_AVAILABLE = False
 
 
 class ShoeUploadAPIView(generics.CreateAPIView):
@@ -125,4 +137,106 @@ def shoe_preview_api(request, shoe_id):
             'success': False,
             'error': 'preview_failed',
             'message': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@parser_classes([MultiPartParser, FormParser])
+def stl_to_3dm_convert_api(request):
+    """STL 转 3DM API - 使用高性能 C++ 实现"""
+    try:
+        if not CPP_AVAILABLE:
+            return Response({
+                'success': False,
+                'error': 'cpp_module_not_available',
+                'message': 'C++ 转换模块不可用，请检查安装'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # 检查文件是否存在
+        if 'stl_file' not in request.FILES:
+            return Response({
+                'success': False,
+                'error': 'no_file',
+                'message': '请上传 STL 文件'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        stl_file = request.FILES['stl_file']
+        
+        # 检查文件扩展名
+        if not stl_file.name.lower().endswith('.stl'):
+            return Response({
+                'success': False,
+                'error': 'invalid_file_type',
+                'message': '只支持 STL 文件格式'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # 生成唯一的文件名
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        unique_id = str(uuid.uuid4())[:8]
+        base_name = os.path.splitext(stl_file.name)[0]
+        
+        # 保存上传的 STL 文件
+        stl_filename = f"{base_name}_{timestamp}_{unique_id}.stl"
+        stl_path = os.path.join(settings.MEDIA_ROOT, 'temp', stl_filename)
+        os.makedirs(os.path.dirname(stl_path), exist_ok=True)
+        
+        with open(stl_path, 'wb') as f:
+            for chunk in stl_file.chunks():
+                f.write(chunk)
+        
+        # 生成输出 3DM 文件路径
+        output_filename = f"{base_name}_{timestamp}_{unique_id}.3dm"
+        output_path = os.path.join(settings.MEDIA_ROOT, 'converted', output_filename)
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        
+        # 使用 C++ 模块进行转换
+        result = cppcore.stl_to_3dm(stl_path, output_path)
+        converter_used = 'C++ (High Performance)'
+        
+        # 清理临时 STL 文件
+        try:
+            os.remove(stl_path)
+        except:
+            pass
+        
+        if not result.get('success', False):
+            return Response({
+                'success': False,
+                'error': 'conversion_failed',
+                'message': result.get('error', '转换失败')
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # 生成访问 URL
+        media_url = settings.MEDIA_URL if settings.MEDIA_URL.endswith('/') else settings.MEDIA_URL + '/'
+        file_url = f"{media_url}converted/{output_filename}"
+        
+        return Response({
+            'success': True,
+            'message': '转换成功',
+            'data': {
+                'original_filename': stl_file.name,
+                'converted_filename': output_filename,
+                'file_url': file_url,
+                'file_path': f"converted/{output_filename}",
+                'converter_used': converter_used,
+                'statistics': {
+                    'triangle_count': result.get('triangle_count', 0),
+                    'vertex_count': result.get('vertex_count', 0),
+                    'file_size_mb': round(os.path.getsize(output_path) / (1024 * 1024), 2)
+                }
+            }
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        # 清理可能的临时文件
+        try:
+            if 'stl_path' in locals() and os.path.exists(stl_path):
+                os.remove(stl_path)
+        except:
+            pass
+            
+        return Response({
+            'success': False,
+            'error': 'server_error',
+            'message': f'服务器错误：{str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

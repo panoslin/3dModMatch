@@ -15,6 +15,11 @@
 #include <numeric>
 #include <optional>
 #include <cmath>
+#include <fstream>
+#include <array>
+
+// OpenNURBS includes
+#include "opennurbs.h"
 
 #ifdef HYBRID_WITH_OPENMP
   #include <omp.h>
@@ -869,10 +874,98 @@ py::list label_regions(py::array_t<double> v_tgt, py::list regions) {
     return out;
 }
 
+// ----------------------------- STL to 3DM 转换 -----------------------------
+
+py::dict stl_to_3dm(const std::string& stl_path, const std::string& output_3dm_path) {
+    try {
+        ON::Begin();
+        
+        // 1. 读取 STL 文件
+        std::ifstream stl(stl_path, std::ios::binary);
+        if (!stl) {
+            ON::End();
+            return py::dict("success"_a = false, "error"_a = "Cannot open STL file");
+        }
+
+        // STL 二进制前 80 字节是 header
+        stl.seekg(80);
+        uint32_t numTriangles;
+        stl.read(reinterpret_cast<char*>(&numTriangles), 4);
+
+        if (numTriangles == 0) {
+            ON::End();
+            stl.close();
+            return py::dict("success"_a = false, "error"_a = "No triangles found in STL file");
+        }
+
+        std::vector<ON_3fPoint> vertices;
+        std::vector<std::array<int, 3>> faces;
+        vertices.reserve(numTriangles * 3);
+        faces.reserve(numTriangles);
+
+        for (uint32_t i = 0; i < numTriangles; ++i) {
+            float normal[3];
+            float v[9];
+            uint16_t attr;
+
+            stl.read(reinterpret_cast<char*>(normal), 12);
+            stl.read(reinterpret_cast<char*>(v), 36);
+            stl.read(reinterpret_cast<char*>(&attr), 2);
+
+            int baseIdx = vertices.size();
+            vertices.push_back(ON_3fPoint(v[0], v[1], v[2]));
+            vertices.push_back(ON_3fPoint(v[3], v[4], v[5]));
+            vertices.push_back(ON_3fPoint(v[6], v[7], v[8]));
+
+            faces.push_back({baseIdx, baseIdx + 1, baseIdx + 2});
+        }
+        stl.close();
+
+        // 2. 创建 ON_Mesh
+        ON_Mesh mesh;
+        for (const auto &v : vertices) {
+            mesh.m_V.Append(v);
+        }
+
+        for (const auto &f : faces) {
+            ON_MeshFace& face = mesh.m_F.AppendNew();
+            face.vi[0] = f[0];
+            face.vi[1] = f[1];
+            face.vi[2] = f[2];
+            face.vi[3] = f[2];  // 三角形面，第4个顶点重复
+        }
+
+        mesh.ComputeVertexNormals();
+
+        // 3. 保存到 3DM - 使用直接的方法
+        ONX_Model model;
+        ON_ModelComponentReference mesh_ref = model.AddModelGeometryComponent(&mesh, nullptr);
+        
+        bool write_success = model.Write(output_3dm_path.c_str(), 70, nullptr);
+        
+        ON::End();
+        
+        if (!write_success) {
+            return py::dict("success"_a = false, "error"_a = "Failed to write 3DM file");
+        }
+        
+        return py::dict("success"_a = true, "message"_a = "STL successfully converted to 3DM",
+                        "triangle_count"_a = (int)numTriangles, "vertex_count"_a = (int)vertices.size());
+        
+    } catch (const std::exception &e) {
+        ON::End();
+        return py::dict("success"_a = false, "error"_a = e.what());
+    }
+}
+
 // ----------------------------- PYBIND11 模块 -----------------------------
 
 PYBIND11_MODULE(cppcore, m) {
     m.doc() = "C++17 core for Shoe Last Matcher (v0.5)";
+
+    // STL 转 3DM
+    m.def("stl_to_3dm", &stl_to_3dm, "Convert STL file to 3DM format",
+          py::arg("stl_path"), py::arg("output_3dm_path"));
 
     // 粗特征
     m.def("coarse_features", &coarse_features, "Compute coarse descriptors");
