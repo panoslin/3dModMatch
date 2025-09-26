@@ -57,18 +57,36 @@
             maxDistance: 500
         },
         
-        // 光照配置
+        // 光照配置 - 四光源照明系统
         LIGHTING: {
-            ambient: { color: 0x404040, intensity: 0.6 },
+            ambient: { color: 0x404040, intensity: 0.6 },  // 原始环境光
             directional: { 
                 color: 0xffffff, 
-                intensity: 1.0,
+                intensity: 1.0,  // 原始主光源
                 position: { x: 10, y: 10, z: 5 }
+            },
+            // 对称光源 - 相反方向同样亮度
+            opposite: {
+                color: 0xffffff,
+                intensity: 1.0,  // 与主光源相同强度
+                position: { x: -10, y: -10, z: -5 }  // 完全相反方向
+            },
+            // 垂直上光源 - 从上方极远距离照射
+            verticalTop: {
+                color: 0xffffff,
+                intensity: 0.125,  // 亮度再次降低一半
+                position: { x: 0, y: 100, z: 0 }  // 距离再拉开一倍
+            },
+            // 垂直下光源 - 从下方极远距离照射
+            verticalBottom: {
+                color: 0xffffff,
+                intensity: 0.125,  // 亮度再次降低一半
+                position: { x: 0, y: -100, z: 0 }  // 距离再拉开一倍
             },
             hemisphere: {
                 skyColor: 0xffffbb,
                 groundColor: 0x080820,
-                intensity: 0.3
+                intensity: 0.3  // 原始半球光
             }
         }
     };
@@ -490,14 +508,14 @@
         _setupLighting() {
             const config = this.options.LIGHTING;
             
-            // 环境光
+            // 环境光 - 原始配置
             this.lights.ambient = new THREE.AmbientLight(
                 config.ambient.color, 
                 config.ambient.intensity
             );
             this.scene.add(this.lights.ambient);
             
-            // 方向光
+            // 主方向光 - 原始配置
             this.lights.directional = new THREE.DirectionalLight(
                 config.directional.color,
                 config.directional.intensity
@@ -510,16 +528,54 @@
             const shadowMap = this.lights.directional.shadow.mapSize;
             shadowMap.width = 2048;
             shadowMap.height = 2048;
-            
             this.scene.add(this.lights.directional);
             
-            // 半球光（模拟天空光照）
+            // 对称光源 - 相反方向同样强度
+            this.lights.opposite = new THREE.DirectionalLight(
+                config.opposite.color,
+                config.opposite.intensity
+            );
+            const oppPos = config.opposite.position;
+            this.lights.opposite.position.set(oppPos.x, oppPos.y, oppPos.z);
+            this.lights.opposite.castShadow = false;  // 对称光不投射阴影，避免冲突
+            this.scene.add(this.lights.opposite);
+            
+            // 垂直上光源 - 从上方远距离照射
+            this.lights.verticalTop = new THREE.DirectionalLight(
+                config.verticalTop.color,
+                config.verticalTop.intensity
+            );
+            const vertTopPos = config.verticalTop.position;
+            this.lights.verticalTop.position.set(vertTopPos.x, vertTopPos.y, vertTopPos.z);
+            this.lights.verticalTop.castShadow = false;  // 垂直光不投射阴影，避免冲突
+            this.scene.add(this.lights.verticalTop);
+            
+            // 垂直下光源 - 从下方照射
+            this.lights.verticalBottom = new THREE.DirectionalLight(
+                config.verticalBottom.color,
+                config.verticalBottom.intensity
+            );
+            const vertBottomPos = config.verticalBottom.position;
+            this.lights.verticalBottom.position.set(vertBottomPos.x, vertBottomPos.y, vertBottomPos.z);
+            this.lights.verticalBottom.castShadow = false;  // 垂直光不投射阴影，避免冲突
+            this.scene.add(this.lights.verticalBottom);
+            
+            // 半球光 - 原始配置
             this.lights.hemisphere = new THREE.HemisphereLight(
                 config.hemisphere.skyColor,
                 config.hemisphere.groundColor,
                 config.hemisphere.intensity
             );
             this.scene.add(this.lights.hemisphere);
+            
+            console.log('🔄 四光源照明系统设置完成:', {
+                ambient: config.ambient.intensity,
+                directional: `${config.directional.intensity} at (${pos.x},${pos.y},${pos.z})`,
+                opposite: `${config.opposite.intensity} at (${oppPos.x},${oppPos.y},${oppPos.z})`,
+                verticalTop: `${config.verticalTop.intensity} at (${vertTopPos.x},${vertTopPos.y},${vertTopPos.z})`,
+                verticalBottom: `${config.verticalBottom.intensity} at (${vertBottomPos.x},${vertBottomPos.y},${vertBottomPos.z})`,
+                hemisphere: config.hemisphere.intensity
+            });
         }
 
         /**
@@ -709,6 +765,30 @@
                     );
                 });
                 
+                // 修复材质问题 - 确保所有材质都有正确的属性
+                if (gltf.scene) {
+                    gltf.scene.traverse((child) => {
+                        if (child.isMesh && child.material) {
+                            // 确保材质可见性
+                            child.material.transparent = false;
+                            child.material.opacity = 1.0;
+                            child.material.visible = true;
+                            
+                            // 如果材质是黑色，设置一个默认颜色
+                            if (child.material.color && 
+                                child.material.color.r === 0 && 
+                                child.material.color.g === 0 && 
+                                child.material.color.b === 0) {
+                                child.material.color.setHex(0xcccccc); // 设置为灰色
+                                console.warn('检测到黑色材质，已修复为灰色');
+                            }
+                            
+                            // 强制材质更新
+                            child.material.needsUpdate = true;
+                        }
+                    });
+                }
+                
                 // 移除旧模型
                 if (this.model) {
                     this.scene.remove(this.model);
@@ -736,7 +816,12 @@
                 this.isLoading = false;
                 this._emit('model-loaded', { model: this.model, gltf });
                 
-                console.log('GLB模型加载成功');
+                console.log('GLB模型加载成功', {
+                    lodLevel: options?.lodLevel || 'unknown',
+                    materials: this._countMaterials(this.model),
+                    meshes: this._countMeshes(this.model),
+                    hasColor: this._checkMaterialColors(this.model)
+                });
                 
             } catch (error) {
                 this.isLoading = false;
@@ -824,6 +909,54 @@
             }
             
             console.log('Three.js查看器已销毁');
+        }
+
+        /**
+         * 计算模型材质数量
+         * @private
+         */
+        _countMaterials(model) {
+            if (!model) return 0;
+            let count = 0;
+            model.traverse((child) => {
+                if (child.isMesh && child.material) {
+                    count++;
+                }
+            });
+            return count;
+        }
+
+        /**
+         * 计算模型网格数量
+         * @private
+         */
+        _countMeshes(model) {
+            if (!model) return 0;
+            let count = 0;
+            model.traverse((child) => {
+                if (child.isMesh) {
+                    count++;
+                }
+            });
+            return count;
+        }
+
+        /**
+         * 检查材质颜色
+         * @private
+         */
+        _checkMaterialColors(model) {
+            if (!model) return false;
+            let hasNonBlackColor = false;
+            model.traverse((child) => {
+                if (child.isMesh && child.material && child.material.color) {
+                    const color = child.material.color;
+                    if (color.r > 0 || color.g > 0 || color.b > 0) {
+                        hasNonBlackColor = true;
+                    }
+                }
+            });
+            return hasNonBlackColor;
         }
     }
 

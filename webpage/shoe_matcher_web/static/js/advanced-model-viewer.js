@@ -152,17 +152,16 @@
                 }
                 
                 this.modelInfo = statusData.data;
-                this.availableLevels = this.modelInfo.lod_levels || ['preview'];
+                // 强制只使用预览级别，禁用其他级别
+                this.availableLevels = ['preview'];  // 用户要求只保留preview级别
                 
                 console.log('LOD管理器初始化成功:', this.availableLevels);
                 
                 // 加载初始级别
                 await this.loadLevel('preview');
                 
-                // 开始预加载
-                if (ADVANCED_CONFIG.LOD_MANAGER.preloadStrategy.enabled) {
-                    this._startPreloading();
-                }
+                // 禁用预加载 - 用户只需要preview级别
+                console.log('预加载已禁用，只使用preview级别');
                 
             } catch (error) {
                 console.error('LOD管理器初始化失败:', error);
@@ -230,8 +229,11 @@
                 const blob = await response.blob();
                 const url = URL.createObjectURL(blob);
                 
-                // 使用Three.js加载器加载
-                await this.viewer.loadModel(url, { silent: options.silent });
+                // 使用Three.js加载器加载  
+                await this.viewer.loadModel(url, { 
+                    silent: options.silent,
+                    lodLevel: level  // 传递LOD级别信息
+                });
                 
                 // 缓存结果
                 this.cache.set(level, { url, timestamp: Date.now() });
@@ -278,25 +280,12 @@
         }
 
         /**
-         * 相机变化处理
+         * 相机变化处理 - 已禁用LOD自动切换
          * @private
          */
         _onCameraChange() {
-            if (!ADVANCED_CONFIG.LOD_MANAGER.autoSwitchThresholds || this.isTransitioning) {
-                return;
-            }
-            
-            // 计算相机到模型的距离
-            const distance = this._calculateCameraDistance();
-            
-            // 确定最佳LOD级别
-            const optimalLevel = this._getOptimalLevel(distance);
-            
-            // 如果需要切换
-            if (optimalLevel !== this.currentLevel) {
-                console.log(`自动切换LOD: ${this.currentLevel} -> ${optimalLevel} (距离: ${distance.toFixed(1)})`);
-                this.loadLevel(optimalLevel, { silent: true });
-            }
+            // 用户要求禁用自动LOD切换，只使用preview级别
+            return;
         }
 
         /**
@@ -675,13 +664,27 @@
             if (this.viewer.renderer) {
                 this.viewer.renderer.setPixelRatio(config.pixelRatio);
                 
-                // 更新阴影贴图大小
+                // 更新阴影贴图大小（只有主方向光投射阴影）
                 if (this.viewer.lights && this.viewer.lights.directional) {
                     const shadowMap = this.viewer.lights.directional.shadow.mapSize;
                     shadowMap.width = config.shadowMapSize;
                     shadowMap.height = config.shadowMapSize;
                     this.viewer.lights.directional.shadow.map?.dispose();
                     this.viewer.lights.directional.shadow.map = null;
+                }
+                
+                // 根据质量级别调整所有辅助光源强度，保持比例
+                if (this.viewer.lights.opposite) {
+                    // 保持对称光源与主光源相同强度
+                    this.viewer.lights.opposite.intensity = this.viewer.lights.directional.intensity;
+                }
+                if (this.viewer.lights.verticalTop) {
+                    // 保持垂直上方光源为主光源强度的1/8
+                    this.viewer.lights.verticalTop.intensity = this.viewer.lights.directional.intensity * 0.125;
+                }
+                if (this.viewer.lights.verticalBottom) {
+                    // 保持垂直下方光源为主光源强度的1/8
+                    this.viewer.lights.verticalBottom.intensity = this.viewer.lights.directional.intensity * 0.125;
                 }
             }
             

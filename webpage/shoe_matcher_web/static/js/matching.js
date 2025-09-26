@@ -2260,7 +2260,7 @@ class MatchingApp {
                 // 1秒后恢复按钮原始状态
                 setTimeout(() => {
                     if (previewBtn.length > 0) {
-                        previewBtn.prop('disabled', false);
+                previewBtn.prop('disabled', false);
                         previewBtn.html('<i class="fas fa-eye"></i>');
                     }
                 }, 1000);
@@ -2316,7 +2316,7 @@ class MatchingApp {
                                 }, 1000);
                                 
                                 return;
-                            } else {
+            } else {
                                 // 继续等待，更新进度提示
                                 const progress = Math.round((attempts / maxAttempts) * 100);
                                 previewBtn.html(`<i class="fas fa-hourglass-half fa-spin me-1"></i>处理中 ${progress}%`);
@@ -2482,8 +2482,8 @@ class MatchingApp {
                 
                 // 1秒后恢复按钮原始状态
                 setTimeout(() => {
-                    if (previewBtn.length > 0) {
-                        previewBtn.prop('disabled', false);
+                if (previewBtn.length > 0) {
+                    previewBtn.prop('disabled', false);
                         previewBtn.html('<i class="fas fa-eye me-1"></i>预览');
                     }
                 }, 1000);
@@ -2546,7 +2546,7 @@ class MatchingApp {
                                 }, 1000);
                                 
                                 return;
-                            } else {
+            } else {
                                 // 继续等待，更新进度提示
                                 const progress = Math.round((attempts / maxAttempts) * 100);
                                 if (previewBtn.length > 0) {
@@ -3369,7 +3369,7 @@ class MatchingApp {
                                 Utils.showNotification('3D预览文件生成完成！', 'success');
                                 
                                 // 1秒后恢复按钮原始状态
-                                setTimeout(() => {
+                setTimeout(() => {
                                     if (previewBtn.length > 0) {
                                         previewBtn.html('<i class="fas fa-eye me-1"></i>预览');
                                     }
@@ -3397,7 +3397,7 @@ class MatchingApp {
                 } catch (processError) {
                     console.error('启动LOD处理失败:', processError);
                     Utils.showNotification('生成3D预览文件失败: ' + processError.message, 'error');
-                    if (previewBtn.length > 0) {
+                if (previewBtn.length > 0) {
                         previewBtn.html('<i class="fas fa-exclamation-triangle me-1"></i>生成失败');
                     }
                 }
