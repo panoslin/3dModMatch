@@ -86,131 +86,8 @@ def get_file_etag(file_path: str) -> str:
     return hashlib.md5(f"{file_path}:{stat.st_mtime}:{stat.st_size}".encode()).hexdigest()
 
 
-# ========================== LOD数据API ========================== #
-# 第一个get_lod_data_api函数已删除，使用下方完整实现
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_lod_status_api(request, model_type: str, model_id: int):
-    """
-    获取模型的LOD处理状态
-    
-    Returns:
-        LOD处理状态和可用信息
-    """
-    try:
-        # 获取模型
-        model, ModelClass, SerializerClass = get_model_and_class(model_type, model_id)
-        
-        # 获取处理状态
-        if LOD_TASKS_AVAILABLE:
-            processing_status = get_lod_processing_status(model_id, model_type)
-        else:
-            processing_status = {'status': 'unavailable', 'message': 'LOD处理服务不可用'}
-        
-        return Response({
-            'success': True,
-            'data': {
-                'model_id': model_id,
-                'model_type': model_type,
-                'model_name': model.name,
-                'processing_status': processing_status,
-                'optimization_status': model.optimization_status,
-                'lod_files': model.lod_files,
-                'available_levels': model.available_lod_levels,
-                'preferred_engine': model.preferred_render_engine,
-                'file_info': {
-                    'original_size_mb': model.file_size_mb,
-                    'compression_ratio': model.compression_ratio,
-                    'supports_webgl': model.supports_webgl
-                }
-            }
-        })
-        
-    except (ShoeModel.DoesNotExist, BlankModel.DoesNotExist):
-        return Response({
-            'success': False,
-            'error': 'model_not_found',
-            'message': f'{model_type} #{model_id} 不存在'
-        }, status=status.HTTP_404_NOT_FOUND)
-        
-    except Exception as e:
-        logger.error(f"获取LOD状态失败: {model_type} #{model_id}: {e}")
-        return Response({
-            'success': False,
-            'error': 'server_error',
-            'message': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 # ========================== LOD管理API ========================== #
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def trigger_lod_processing_api(request, model_type: str, model_id: int):
-    """
-    手动触发LOD处理
-    
-    Body参数：
-    - force_regenerate: 是否强制重新生成（默认false）
-    - lod_levels: 要生成的LOD级别列表（可选）
-    
-    Returns:
-        任务状态信息
-    """
-    if not LOD_TASKS_AVAILABLE:
-        return Response({
-            'success': False,
-            'error': 'service_unavailable',
-            'message': 'LOD处理服务不可用'
-        }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-    
-    try:
-        # 验证模型存在
-        model, ModelClass, SerializerClass = get_model_and_class(model_type, model_id)
-        
-        # 获取参数
-        force_regenerate = request.data.get('force_regenerate', False)
-        
-        # 检查权限（可以添加更细粒度的权限控制）
-        if not request.user.is_staff and hasattr(model, 'uploaded_by') and model.uploaded_by != request.user:
-            return Response({
-                'success': False,
-                'error': 'permission_denied',
-                'message': '无权限处理此模型'
-            }, status=status.HTTP_403_FORBIDDEN)
-        
-        # 启动异步任务
-        task = process_model_lod.delay(model_id, model_type, force_regenerate)
-        
-        return Response({
-            'success': True,
-            'data': {
-                'task_id': task.id,
-                'model_id': model_id,
-                'model_type': model_type,
-                'force_regenerate': force_regenerate,
-                'message': 'LOD处理任务已启动',
-                'status_url': f'/api/lod/{model_type}/{model_id}/status/'
-            }
-        }, status=status.HTTP_202_ACCEPTED)
-        
-    except (ShoeModel.DoesNotExist, BlankModel.DoesNotExist):
-        return Response({
-            'success': False,
-            'error': 'model_not_found',
-            'message': f'{model_type} #{model_id} 不存在'
-        }, status=status.HTTP_404_NOT_FOUND)
-        
-    except Exception as e:
-        logger.error(f"触发LOD处理失败: {model_type} #{model_id}: {e}")
-        return Response({
-            'success': False,
-            'error': 'server_error',
-            'message': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -532,13 +409,9 @@ def trigger_lod_processing_api(request, model_type: str, model_id: int):
         force_regenerate = request.data.get('force_regenerate', False)
         
         try:
-            if model_type == 'shoe':
-                from apps.shoes.tasks import process_shoe_lod
-                task = process_shoe_lod.delay(model_id, force_regenerate)
-            else:
-                # 创建类似的blank任务或直接调用
-                from utils.lod_processing_tasks import process_model_lod
-                task = process_model_lod.delay(model_id, model_type, force_regenerate)
+            # 统一使用process_model_lod处理所有模型类型
+            from utils.lod_processing_tasks import process_model_lod
+            task = process_model_lod.delay(model_id, model_type, force_regenerate)
             
             return Response({
                 'success': True,
@@ -574,41 +447,40 @@ def trigger_lod_processing_api(request, model_type: str, model_id: int):
 def get_lod_status_api(request, model_type: str, model_id: int):
     """
     获取指定模型的LOD状态
+    
+    基于数据库模型字段返回完整状态信息
     """
     try:
-        # 获取模型对象
-        if model_type == 'shoe':
-            from apps.shoes.models import ShoeModel
-            try:
-                model = ShoeModel.objects.get(id=model_id)
-            except ShoeModel.DoesNotExist:
-                return Response({
-                    'success': False,
-                    'error': 'model_not_found'
-                }, status=status.HTTP_404_NOT_FOUND)
-        elif model_type == 'blank':
-            from apps.blanks.models import BlankModel
-            try:
-                model = BlankModel.objects.get(id=model_id)
-            except BlankModel.DoesNotExist:
-                return Response({
-                    'success': False,
-                    'error': 'model_not_found'
-                }, status=status.HTTP_404_NOT_FOUND)
-        else:
-            return Response({
-                'success': False,
-                'error': 'invalid_model_type'
-            }, status=status.HTTP_400_BAD_REQUEST)
+        logger.info(f"获取LOD状态: {model_type}/{model_id}")
         
-        # 构建状态信息
+        # 获取模型对象
+        model, ModelClass, SerializerClass = get_model_and_class(model_type, model_id)
+        
+        # 获取LOD文件信息
+        lod_files = getattr(model, 'lod_files', {}) or {}
+        lod_levels = list(lod_files.keys()) if lod_files else []
+        
+        # 检查文件系统中的实际文件
+        existing_files = {}
+        for level, relative_path in lod_files.items():
+            file_path = os.path.join(settings.MEDIA_ROOT, relative_path)
+            existing_files[level] = {
+                'path': relative_path,
+                'exists': os.path.exists(file_path),
+                'size': os.path.getsize(file_path) if os.path.exists(file_path) else 0
+            }
+        
+        # 构建完整的状态信息
         status_data = {
             'model_id': model_id,
             'model_type': model_type,
             'model_name': model.name,
-            'has_glb_files': bool(getattr(model, 'geometry_simplified', False)),
-            'lod_levels': getattr(model, 'lod_files', {}).keys() if hasattr(model, 'lod_files') else [],
-            'webgl_ready': bool(getattr(model, 'supports_webgl', False)),
+            'has_3dm_file': bool(model.file and os.path.exists(model.file.path) if hasattr(model, 'file') else False),
+            'has_glb_files': bool(lod_levels),
+            'lod_levels': lod_levels,
+            'lod_files': existing_files,
+            'webgl_ready': bool(getattr(model, 'supports_webgl', False)) and bool(lod_levels),
+            'processing_status': getattr(model, 'processing_status', 'unknown'),
             'optimization_status': {
                 'geometry_simplified': bool(getattr(model, 'geometry_simplified', False)),
                 'compression_ratio': getattr(model, 'compression_ratio', None),
@@ -617,126 +489,110 @@ def get_lod_status_api(request, model_type: str, model_id: int):
             }
         }
         
+        logger.info(f"LOD状态查询成功: {model_type}/{model_id}, LOD级别: {lod_levels}")
         return Response({
             'success': True,
             'data': status_data
         })
+        
+    except (ShoeModel.DoesNotExist, BlankModel.DoesNotExist):
+        return Response({
+            'success': False,
+            'error': 'model_not_found',
+            'message': f'{model_type} #{model_id} 不存在'
+        }, status=status.HTTP_404_NOT_FOUND)
         
     except Exception as e:
         logger.error(f"获取LOD状态失败 {model_type}/{model_id}: {e}")
         return Response({
             'success': False,
             'error': 'status_failed',
-            'message': str(e)
+            'message': f'状态查询失败: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@api_view(['GET'])
-@permission_classes([AllowAny])
 def get_lod_data_api(request, model_type: str, model_id: int):
     """
     获取指定模型的LOD数据文件
+    
+    基于数据库模型的lod_files字段获取文件路径
+    使用普通Django视图（解决DRF装饰器问题）
     """
-    lod_level = request.GET.get('lod', 'preview')
-    file_format = request.GET.get('format', 'glb')
-    
-    # 添加详细日志
-    logger.info(f"GLB数据API调用: model_type={model_type}, model_id={model_id}, lod_level={lod_level}, file_format={file_format}")
-    logger.info(f"请求查询参数: {dict(request.GET)}")
-    
-    if file_format != 'glb':
-        logger.warning(f"不支持的文件格式: {file_format}")
-        return Response({
-            'success': False,
-            'error': 'unsupported_format',
-            'message': f'不支持的文件格式: {file_format}'
-        }, status=status.HTTP_400_BAD_REQUEST)
+    from django.http import JsonResponse, FileResponse
     
     try:
-        logger.info(f"开始处理GLB数据请求")
+        logger.info(f"获取LOD数据: {model_type}/{model_id}")
+        
+        # 获取请求参数
+        lod_level = request.GET.get('lod', 'preview')
+        file_format = request.GET.get('format', 'glb')
+        
+        # 验证文件格式
+        if file_format != 'glb':
+            return JsonResponse({
+                'success': False,
+                'error': 'unsupported_format',
+                'message': f'不支持的文件格式: {file_format}'
+            }, status=400)
         
         # 获取模型对象
-        if model_type == 'shoe':
-            from apps.shoes.models import ShoeModel
-            try:
-                model = ShoeModel.objects.get(id=model_id)
-                logger.info(f"成功获取鞋模: {model.name}")
-            except ShoeModel.DoesNotExist:
-                logger.error(f"鞋模不存在: {model_id}")
-                return Response({
-                    'success': False,
-                    'error': 'model_not_found'
-                }, status=status.HTTP_404_NOT_FOUND)
-        elif model_type == 'blank':
-            from apps.blanks.models import BlankModel
-            try:
-                model = BlankModel.objects.get(id=model_id)
-                logger.info(f"成功获取粗胚: {model.name}")
-            except BlankModel.DoesNotExist:
-                logger.error(f"粗胚不存在: {model_id}")
-                return Response({
-                    'success': False,
-                    'error': 'model_not_found'
-                }, status=status.HTTP_404_NOT_FOUND)
-        else:
-            logger.error(f"无效的模型类型: {model_type}")
-            return Response({
-                'success': False,
-                'error': 'invalid_model_type'
-            }, status=status.HTTP_400_BAD_REQUEST)
+        model, ModelClass, SerializerClass = get_model_and_class(model_type, model_id)
         
-        # 检查是否有LOD文件
-        logger.info(f"检查LOD文件: hasattr={hasattr(model, 'lod_files')}, lod_files={getattr(model, 'lod_files', None)}")
+        # 检查模型是否有LOD文件
         if not hasattr(model, 'lod_files') or not model.lod_files:
-            logger.error("模型没有LOD文件")
-            return Response({
+            logger.warning(f"模型 {model_type}/{model_id} 没有LOD文件")
+            return JsonResponse({
                 'success': False,
                 'error': 'no_lod_files',
-                'message': 'GLB文件未找到，请先触发LOD处理'
-            }, status=status.HTTP_404_NOT_FOUND)
+                'message': 'LOD文件未生成，请先触发LOD处理'
+            }, status=404)
         
-        # 检查指定LOD级别
-        logger.info(f"检查LOD级别: 请求={lod_level}, 可用={list(model.lod_files.keys())}")
+        # 检查指定LOD级别是否存在
         if lod_level not in model.lod_files:
             available_levels = list(model.lod_files.keys())
-            logger.error(f"LOD级别不存在: {lod_level}")
-            return Response({
+            logger.warning(f"LOD级别 {lod_level} 不存在，可用级别: {available_levels}")
+            return JsonResponse({
                 'success': False,
                 'error': 'lod_level_not_found',
                 'message': f'LOD级别 {lod_level} 未找到，可用级别: {available_levels}'
-            }, status=status.HTTP_404_NOT_FOUND)
+            }, status=404)
         
-        # 获取文件路径
+        # 获取GLB文件路径（从数据库模型的lod_files字段）
         relative_path = model.lod_files[lod_level]
         file_path = os.path.join(settings.MEDIA_ROOT, relative_path)
-        logger.info(f"文件路径: {file_path}")
         
-        # 检查文件是否存在
-        file_exists = os.path.exists(file_path)
-        logger.info(f"文件存在性检查: {file_exists}")
-        if not file_exists:
-            logger.error(f"GLB文件不存在: {relative_path}")
-            return Response({
+        # 检查文件是否实际存在于文件系统
+        if not os.path.exists(file_path):
+            logger.error(f"GLB文件不存在于文件系统: {file_path}")
+            return JsonResponse({
                 'success': False,
                 'error': 'file_not_found',
                 'message': f'GLB文件不存在: {relative_path}'
-            }, status=status.HTTP_404_NOT_FOUND)
+            }, status=404)
         
         # 返回文件响应
-        logger.info("创建FileResponse")
-        from django.http import FileResponse
         response = FileResponse(
             open(file_path, 'rb'),
             content_type='model/gltf-binary'
         )
         response['Content-Disposition'] = f'inline; filename="{model_type}_{model_id}_{lod_level}.glb"'
-        logger.info(f"返回GLB文件响应，状态码: {response.status_code}")
+        
+        logger.info(f"成功返回GLB文件: {model_type}/{model_id}/{lod_level}")
         return response
         
     except Exception as e:
-        logger.error(f"获取GLB数据失败 {model_type}/{model_id}: {e}")
-        return Response({
+        if 'DoesNotExist' in str(type(e)):
+            return JsonResponse({
+                'success': False,
+                'error': 'model_not_found',
+                'message': f'{model_type} #{model_id} 不存在'
+            }, status=404)
+        
+        logger.error(f"获取LOD数据失败: {model_type}/{model_id}: {e}")
+        return JsonResponse({
             'success': False,
-            'error': 'data_retrieval_failed',
-            'message': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            'error': 'server_error',
+            'message': f'服务器错误: {str(e)}'
+        }, status=500)
+
+

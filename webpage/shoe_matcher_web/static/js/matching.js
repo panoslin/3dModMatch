@@ -2178,9 +2178,6 @@ class MatchingApp {
                                 <small class="text-muted">${shoe.file_size_mb}MB</small>
                             </div>
                             <div>
-                                // <button class="btn btn-sm btn-outline-primary me-1" onclick="matchingApp.selectShoeModel(${index})">
-                                //     <i class="fas fa-check"></i> 选择
-                                // </button>
                                 <button class="btn btn-sm btn-outline-info" id="preview-btn-${shoe.id}" onclick="matchingApp.previewShoeModelById(${shoe.id})">
                                     <i class="fas fa-eye"></i>
                                 </button>
@@ -2239,39 +2236,205 @@ class MatchingApp {
             previewBtn.prop('disabled', true);
             previewBtn.html('<i class="fas fa-spinner fa-spin"></i>');
             
-            // ==================== 请求3D预览数据 ====================
-            // 请求指定鞋模的3D预览数据
-            const response = await Utils.apiRequest(`/api/visualization/preview/${shoeId}/?type=shoe`);
+            // ==================== 检查Three.js预览可用性 ====================
+            console.log(`准备预览鞋模 ID: ${shoeId}`);
             
-            if (response.success) {
-                // ==================== 显示3D预览 ====================
-                // 显示3D预览Modal
-                $('#preview-3d-content').html(response.data.html);
-                $('#model-info #vertex-count').text(response.data.metadata.vertex_count || '--');
-                $('#model-info #face-count').text(response.data.metadata.face_count || '--');
-                $('#model-info #model-volume').text((response.data.metadata.volume || 0).toFixed(0));
-                $('#preview3DModal').modal('show');
-                                
-                // 动态调整#scene元素的大小
+            // 检查鞋模是否支持Three.js预览
+            const statusResponse = await Utils.apiRequest(`/api/lod/shoe/${shoeId}/status/`);
+            
+            if (statusResponse.success && statusResponse.data && statusResponse.data.webgl_ready) {
+                // ==================== 使用Three.js预览 ====================
+                console.log('鞋模支持Three.js预览，跳转到新预览页面');
+                
+                // 更新按钮状态为预览完成
+                if (previewBtn.length > 0) {
+                    previewBtn.html('<i class="fas fa-check me-1"></i>预览完成');
+                }
+                
+                // 在新标签页中打开Three.js预览页面
+                const previewUrl = `/api/three/shoe/${shoeId}/`;
+                window.open(previewUrl, '_blank');
+                
+                Utils.showNotification('正在新标签页中打开3D预览...', 'success');
+                
+                // 1秒后恢复按钮原始状态
                 setTimeout(() => {
-                    this.adjustSceneSize();
-                }, 200);
-                // ==================== 恢复按钮状态 ====================
-                // 恢复按钮原始状态
-                previewBtn.prop('disabled', false);
-                previewBtn.html(originalContent);
+                    if (previewBtn.length > 0) {
+                        previewBtn.prop('disabled', false);
+                        previewBtn.html('<i class="fas fa-eye"></i>');
+                    }
+                }, 1000);
+                
+            } else if (statusResponse.success && statusResponse.data && statusResponse.data.has_3dm_file) {
+                // ==================== 需要生成GLB文件 ====================
+                console.log('鞋模暂不支持Three.js预览，尝试生成GLB文件...');
+                
+                // 更新按钮状态显示正在生成GLB
+                previewBtn.html('<i class="fas fa-cogs fa-spin me-1"></i>生成GLB中...');
+                
+                Utils.showNotification('正在生成3D预览文件，请稍候...', 'info');
+                
+                try {
+                    // 触发LOD处理
+                    const processResponse = await Utils.apiRequest(`/api/lod/shoe/${shoeId}/process/`, {
+                        method: 'POST'
+                    });
+                    
+                    if (processResponse.success) {
+                        console.log('LOD处理任务已启动，等待完成...');
+                        previewBtn.html('<i class="fas fa-hourglass-half fa-spin me-1"></i>处理中...');
+                        
+                        // 轮询检查处理状态（最多等待3分钟）
+                        const maxAttempts = 36; // 3分钟，每5秒检查一次
+                        let attempts = 0;
+                        
+                        const checkStatus = async () => {
+                            attempts++;
+                            if (attempts > maxAttempts) {
+                                Utils.showNotification('预览文件生成时间较长，请稍后再试', 'warning');
+                                return;
+                            }
+                            
+                            const checkResponse = await Utils.apiRequest(`/api/lod/shoe/${shoeId}/status/`);
+                            
+                            if (checkResponse.success && checkResponse.data && checkResponse.data.webgl_ready) {
+                                // GLB文件已准备好，更新按钮状态为完成
+                                if (previewBtn.length > 0) {
+                                    previewBtn.html('<i class="fas fa-check me-1"></i>预览完成');
+                                }
+                                
+                                console.log('GLB文件生成完成，打开预览页面');
+                                const previewUrl = `/api/three/shoe/${shoeId}/`;
+                                window.open(previewUrl, '_blank');
+                                Utils.showNotification('3D预览文件生成完成！', 'success');
+                                
+                                // 1秒后恢复按钮原始状态
+                                setTimeout(() => {
+                                    if (previewBtn.length > 0) {
+                                        previewBtn.html('<i class="fas fa-eye me-1"></i>预览');
+                                    }
+                                }, 1000);
+                                
+                                return;
+                            } else {
+                                // 继续等待，更新进度提示
+                                const progress = Math.round((attempts / maxAttempts) * 100);
+                                previewBtn.html(`<i class="fas fa-hourglass-half fa-spin me-1"></i>处理中 ${progress}%`);
+                                
+                                // 5秒后再次检查
+                                setTimeout(checkStatus, 5000);
+                            }
+                        };
+                        
+                        // 开始状态检查
+                        setTimeout(checkStatus, 5000);
+                        
+                    } else {
+                        throw new Error(processResponse.message || 'LOD处理启动失败');
+                    }
+                } catch (processError) {
+                    console.error('启动LOD处理失败:', processError);
+                    Utils.showNotification('生成3D预览文件失败: ' + processError.message, 'error');
+                    // 回退到Plotly预览
+                    throw new Error('LOD处理失败，使用Plotly预览');
+                }
                 
             } else {
-                throw new Error(response.message || '预览生成失败');
+                // ==================== 强制生成GLB文件 ====================
+                console.log('鞋模没有GLB文件，强制生成GLB文件...');
+                
+                // 更新按钮状态显示正在生成GLB
+                previewBtn.html('<i class="fas fa-cogs fa-spin me-1"></i>生成GLB中...');
+                
+                Utils.showNotification('鞋模文件需要处理，正在生成3D预览文件...', 'info');
+                
+                try {
+                    // 触发LOD处理
+                    const processResponse = await Utils.apiRequest(`/api/lod/shoe/${shoeId}/process/`, {
+                        method: 'POST'
+                    });
+                    
+                    if (processResponse.success) {
+                        console.log('LOD处理任务已启动，等待完成...');
+                        previewBtn.html('<i class="fas fa-hourglass-half fa-spin me-1"></i>处理中...');
+                        
+                        // 轮询检查处理状态（最多等待5分钟）
+                        const maxAttempts = 60; // 5分钟，每5秒检查一次
+                        let attempts = 0;
+                        
+                        const checkStatus = async () => {
+                            attempts++;
+                            if (attempts > maxAttempts) {
+                                Utils.showNotification('预览文件生成超时，请检查文件是否过大或稍后重试', 'error');
+                                previewBtn.html('<i class="fas fa-exclamation-triangle me-1"></i>生成失败');
+                                return;
+                            }
+                            
+                            const checkResponse = await Utils.apiRequest(`/api/lod/shoe/${shoeId}/status/`);
+                            
+                            if (checkResponse.success && checkResponse.data && checkResponse.data.webgl_ready) {
+                                // GLB文件已准备好，更新按钮状态为完成
+                                if (previewBtn.length > 0) {
+                                    previewBtn.html('<i class="fas fa-check me-1"></i>预览完成');
+                                }
+                                
+                                console.log('GLB文件生成完成，打开预览页面');
+                                const previewUrl = `/api/three/shoe/${shoeId}/`;
+                                window.open(previewUrl, '_blank');
+                                Utils.showNotification('3D预览文件生成完成！正在打开预览...', 'success');
+                                
+                                // 1秒后恢复按钮原始状态
+                                setTimeout(() => {
+                                    if (previewBtn.length > 0) {
+                                        previewBtn.html('<i class="fas fa-eye me-1"></i>预览');
+                                    }
+                                }, 1000);
+                                
+                                return;
+                            } else {
+                                // 继续等待，更新进度提示
+                                const progress = Math.round((attempts / maxAttempts) * 100);
+                                previewBtn.html(`<i class="fas fa-hourglass-half fa-spin me-1"></i>处理中 ${progress}%`);
+                                
+                                // 显示详细的处理状态
+                                if (checkResponse.data && checkResponse.data.processing_status) {
+                                    const status = checkResponse.data.processing_status;
+                                    if (status === 'processing') {
+                                        // 显示处理中状态
+                                    } else if (status === 'failed') {
+                                        Utils.showNotification('3D预览文件生成失败，请检查文件格式或稍后重试', 'error');
+                                        previewBtn.html('<i class="fas fa-exclamation-triangle me-1"></i>生成失败');
+                                        return;
+                                    }
+                                }
+                                
+                                // 5秒后再次检查
+                                setTimeout(checkStatus, 5000);
+                            }
+                        };
+                        
+                        // 开始状态检查
+                        setTimeout(checkStatus, 5000);
+                        
+                    } else {
+                        throw new Error(processResponse.message || 'LOD处理启动失败');
+                    }
+                } catch (processError) {
+                    console.error('启动LOD处理失败:', processError);
+                    Utils.showNotification('生成3D预览文件失败: ' + processError.message, 'error');
+                    previewBtn.html('<i class="fas fa-exclamation-triangle me-1"></i>生成失败');
+                }
             }
             
         } catch (error) {
             // ==================== 错误处理 ====================
-            // 恢复按钮状态并显示错误
+            console.error('预览加载失败:', error);
+            Utils.showNotification('预览加载失败: ' + error.message, 'error');
+        } finally {
+            // ==================== 恢复按钮状态 ====================
+            // 恢复按钮原始状态
             previewBtn.prop('disabled', false);
             previewBtn.html(originalContent);
-            
-            Utils.showNotification('预览加载失败: ' + error.message, 'error');
         }
     }
     
@@ -2296,39 +2459,243 @@ class MatchingApp {
                 previewBtn.html('<i class="fas fa-spinner fa-spin me-1"></i>生成中...');
             }
             
-            // ==================== 请求3D预览数据 ====================
-            // 请求鞋模的3D预览数据
-            const response = await Utils.apiRequest(`/api/visualization/preview/${this.currentShoeModel.id}/?type=shoe`);
+            // ==================== 检查Three.js预览可用性 ====================
+            console.log(`准备预览当前鞋模 ID: ${this.currentShoeModel.id}`);
             
-            if (response.success) {
-                // ==================== 显示3D预览 ====================
-                // 显示3D预览Modal
-                $('#preview-3d-content').html(response.data.html);
-                $('#model-info #vertex-count').text(response.data.metadata.vertex_count || '--');
-                $('#model-info #face-count').text(response.data.metadata.face_count || '--');
-                $('#model-info #model-volume').text((response.data.metadata.volume || 0).toFixed(0));
-                $('#preview3DModal').modal('show');
+            // 检查鞋模是否支持Three.js预览
+            const statusResponse = await Utils.apiRequest(`/api/lod/shoe/${this.currentShoeModel.id}/status/`);
+            
+            if (statusResponse.success && statusResponse.data && statusResponse.data.webgl_ready) {
+                // ==================== 使用Three.js预览 ====================
+                console.log('当前鞋模支持Three.js预览，跳转到新预览页面');
                 
-                // ==================== 恢复按钮状态 ====================
-                // 恢复按钮原始状态
+                // 更新按钮状态为预览完成
                 if (previewBtn.length > 0) {
-                    previewBtn.prop('disabled', false);
-                    previewBtn.html(originalContent);
+                    previewBtn.html('<i class="fas fa-check me-1"></i>预览完成');
+                }
+                
+                // 在新标签页中打开Three.js预览页面
+                const previewUrl = `/api/three/shoe/${this.currentShoeModel.id}/`;
+                window.open(previewUrl, '_blank');
+                
+                Utils.showNotification('正在新标签页中打开3D预览...', 'success');
+                
+                // 1秒后恢复按钮原始状态
+                setTimeout(() => {
+                    if (previewBtn.length > 0) {
+                        previewBtn.prop('disabled', false);
+                        previewBtn.html('<i class="fas fa-eye me-1"></i>预览');
+                    }
+                }, 1000);
+                
+            } else if (statusResponse.success && statusResponse.data && statusResponse.data.has_3dm_file) {
+                // ==================== 需要生成GLB文件 ====================
+                console.log('当前鞋模暂不支持Three.js预览，尝试生成GLB文件...');
+                
+                // 更新按钮状态显示正在生成GLB
+                if (previewBtn.length > 0) {
+                    previewBtn.html('<i class="fas fa-cogs fa-spin me-1"></i>生成GLB中...');
+                }
+                
+                Utils.showNotification('正在生成3D预览文件，请稍候...', 'info');
+                
+                try {
+                    // 触发LOD处理
+                    const processResponse = await Utils.apiRequest(`/api/lod/shoe/${this.currentShoeModel.id}/process/`, {
+                        method: 'POST'
+                    });
+                    
+                    if (processResponse.success) {
+                        console.log('LOD处理任务已启动，等待完成...');
+                        if (previewBtn.length > 0) {
+                            previewBtn.html('<i class="fas fa-hourglass-half fa-spin me-1"></i>处理中...');
+                        }
+                        
+                        // 轮询检查处理状态（最多等待5分钟）
+                        const maxAttempts = 60; // 5分钟，每5秒检查一次
+                        let attempts = 0;
+                        
+                        const checkStatus = async () => {
+                            attempts++;
+                            if (attempts > maxAttempts) {
+                                Utils.showNotification('预览文件生成超时，请检查文件是否过大或稍后重试', 'error');
+                                if (previewBtn.length > 0) {
+                                    previewBtn.html('<i class="fas fa-exclamation-triangle me-1"></i>生成失败');
+                                }
+                                return;
+                            }
+                            
+                            const checkResponse = await Utils.apiRequest(`/api/lod/shoe/${this.currentShoeModel.id}/status/`);
+                            
+                            if (checkResponse.success && checkResponse.data && checkResponse.data.webgl_ready) {
+                                // GLB文件已准备好，更新按钮状态为完成
+                                if (previewBtn.length > 0) {
+                                    previewBtn.html('<i class="fas fa-check me-1"></i>预览完成');
+                                }
+                                
+                                console.log('GLB文件生成完成，打开预览页面');
+                                const previewUrl = `/api/three/shoe/${this.currentShoeModel.id}/`;
+                                window.open(previewUrl, '_blank');
+                                Utils.showNotification('3D预览文件生成完成！正在打开预览...', 'success');
+                                
+                                // 1秒后恢复按钮原始状态
+                                setTimeout(() => {
+                                    if (previewBtn.length > 0) {
+                                        previewBtn.html('<i class="fas fa-eye me-1"></i>预览');
+                                    }
+                                }, 1000);
+                                
+                                return;
+                            } else {
+                                // 继续等待，更新进度提示
+                                const progress = Math.round((attempts / maxAttempts) * 100);
+                                if (previewBtn.length > 0) {
+                                    previewBtn.html(`<i class="fas fa-hourglass-half fa-spin me-1"></i>处理中 ${progress}%`);
+                                }
+                                
+                                // 显示详细的处理状态
+                                if (checkResponse.data && checkResponse.data.processing_status) {
+                                    const status = checkResponse.data.processing_status;
+                                    if (status === 'processing') {
+                                        // 显示处理中状态
+                                    } else if (status === 'failed') {
+                                        Utils.showNotification('3D预览文件生成失败，请检查文件格式或稍后重试', 'error');
+                                        if (previewBtn.length > 0) {
+                                            previewBtn.html('<i class="fas fa-exclamation-triangle me-1"></i>生成失败');
+                                        }
+                                        return;
+                                    }
+                                }
+                                
+                                // 5秒后再次检查
+                                setTimeout(checkStatus, 5000);
+                            }
+                        };
+                        
+                        // 开始状态检查
+                        setTimeout(checkStatus, 5000);
+                        
+                    } else {
+                        throw new Error(processResponse.message || 'LOD处理启动失败');
+                    }
+                } catch (processError) {
+                    console.error('启动LOD处理失败:', processError);
+                    Utils.showNotification('生成3D预览文件失败: ' + processError.message, 'error');
+                    if (previewBtn.length > 0) {
+                        previewBtn.html('<i class="fas fa-exclamation-triangle me-1"></i>生成失败');
+                    }
                 }
                 
             } else {
-                throw new Error(response.message || '预览生成失败');
+                // ==================== 强制生成GLB文件 ====================
+                console.log('当前鞋模没有GLB文件，强制生成GLB文件...');
+                
+                // 更新按钮状态显示正在生成GLB
+                if (previewBtn.length > 0) {
+                    previewBtn.html('<i class="fas fa-cogs fa-spin me-1"></i>生成GLB中...');
+                }
+                
+                Utils.showNotification('鞋模文件需要处理，正在生成3D预览文件...', 'info');
+                
+                try {
+                    // 触发LOD处理
+                    const processResponse = await Utils.apiRequest(`/api/lod/shoe/${this.currentShoeModel.id}/process/`, {
+                        method: 'POST'
+                    });
+                    
+                    if (processResponse.success) {
+                        console.log('LOD处理任务已启动，等待完成...');
+                        if (previewBtn.length > 0) {
+                            previewBtn.html('<i class="fas fa-hourglass-half fa-spin me-1"></i>处理中...');
+                        }
+                        
+                        // 轮询检查处理状态（最多等待5分钟）
+                        const maxAttempts = 60; // 5分钟，每5秒检查一次
+                        let attempts = 0;
+                        
+                        const checkStatus = async () => {
+                            attempts++;
+                            if (attempts > maxAttempts) {
+                                Utils.showNotification('预览文件生成超时，请检查文件是否过大或稍后重试', 'error');
+                                if (previewBtn.length > 0) {
+                                    previewBtn.html('<i class="fas fa-exclamation-triangle me-1"></i>生成失败');
+                                }
+                                return;
+                            }
+                            
+                            const checkResponse = await Utils.apiRequest(`/api/lod/shoe/${this.currentShoeModel.id}/status/`);
+                            
+                            if (checkResponse.success && checkResponse.data && checkResponse.data.webgl_ready) {
+                                // GLB文件已准备好，更新按钮状态为完成
+                                if (previewBtn.length > 0) {
+                                    previewBtn.html('<i class="fas fa-check me-1"></i>预览完成');
+                                }
+                                
+                                console.log('GLB文件生成完成，打开预览页面');
+                                const previewUrl = `/api/three/shoe/${this.currentShoeModel.id}/`;
+                                window.open(previewUrl, '_blank');
+                                Utils.showNotification('3D预览文件生成完成！正在打开预览...', 'success');
+                                
+                                // 1秒后恢复按钮原始状态
+                                setTimeout(() => {
+                                    if (previewBtn.length > 0) {
+                                        previewBtn.html('<i class="fas fa-eye me-1"></i>预览');
+                                    }
+                                }, 1000);
+                                
+                                return;
+                            } else {
+                                // 继续等待，更新进度提示
+                                const progress = Math.round((attempts / maxAttempts) * 100);
+                                if (previewBtn.length > 0) {
+                                    previewBtn.html(`<i class="fas fa-hourglass-half fa-spin me-1"></i>处理中 ${progress}%`);
+                                }
+                                
+                                // 显示详细的处理状态
+                                if (checkResponse.data && checkResponse.data.processing_status) {
+                                    const status = checkResponse.data.processing_status;
+                                    if (status === 'processing') {
+                                        // 显示处理中状态
+                                    } else if (status === 'failed') {
+                                        Utils.showNotification('3D预览文件生成失败，请检查文件格式或稍后重试', 'error');
+                                        if (previewBtn.length > 0) {
+                                            previewBtn.html('<i class="fas fa-exclamation-triangle me-1"></i>生成失败');
+                                        }
+                                        return;
+                                    }
+                                }
+                                
+                                // 5秒后再次检查
+                                setTimeout(checkStatus, 5000);
+                            }
+                        };
+                        
+                        // 开始状态检查
+                        setTimeout(checkStatus, 5000);
+                        
+                    } else {
+                        throw new Error(processResponse.message || 'LOD处理启动失败');
+                    }
+                } catch (processError) {
+                    console.error('启动LOD处理失败:', processError);
+                    Utils.showNotification('生成3D预览文件失败: ' + processError.message, 'error');
+                    if (previewBtn.length > 0) {
+                        previewBtn.html('<i class="fas fa-exclamation-triangle me-1"></i>生成失败');
+                    }
+                }
             }
             
         } catch (error) {
             // ==================== 错误处理 ====================
-            // 恢复按钮状态并显示错误
+            console.error('预览加载失败:', error);
+            Utils.showNotification('预览加载失败: ' + error.message, 'error');
+        } finally {
+            // ==================== 恢复按钮状态 ====================
+            // 恢复按钮原始状态
             if (previewBtn.length > 0) {
                 previewBtn.prop('disabled', false);
                 previewBtn.html(originalContent);
             }
-            
-            Utils.showNotification('预览加载失败: ' + error.message, 'error');
         }
     }
     
@@ -2924,93 +3291,227 @@ class MatchingApp {
                 previewBtn.html('<i class="fas fa-spinner fa-spin me-1"></i>生成中...');
             }
             
-            // ==================== 立即显示Modal和加载状态 ====================
+            // ==================== 检查Three.js预览可用性 ====================
             console.log('开始预览粗胚，ID:', blankId);
             
-            // 显示加载状态
-            $('#preview-3d-content').html(`
-                <div class="text-center py-5">
-                    <div class="spinner-border text-primary mb-3" role="status">
-                        <span class="visually-hidden">加载中...</span>
-                    </div>
-                    <h5 class="text-muted">正在加载3D模型...</h5>
-                    <p class="text-muted small">请稍候，正在生成预览</p>
-                </div>
-            `);
+            // 检查粗胚是否支持Three.js预览
+            const statusResponse = await Utils.apiRequest(`/api/lod/blank/${blankId}/status/`);
+            console.log('粗胚状态API响应:', statusResponse);
             
-            // 重置模型信息
-            $('#model-info #vertex-count').text('--');
-            $('#model-info #face-count').text('--');
-            $('#model-info #model-volume').text('--');
-            
-            // 显示Modal
-            $('#preview3DModal').modal('show');
-            
-            // 添加Modal显示后的事件监听（仅用于窗口大小调整）
-            $('#preview3DModal').off('shown.bs.modal').on('shown.bs.modal', () => {
-                console.log('预览Modal已显示');
-                // 不在这里调整尺寸，等待Plotly完全加载后再调整
-            });
-            
-            console.log('发送预览API请求...');
-            const response = await Utils.apiRequest(`/api/visualization/preview/${blankId}/?type=blank`);
-            console.log('预览API响应:', response);
-            
-            if (response.success) {
-                // ==================== 更新预览内容 ====================
-                // 更新内容
-                $('#preview-3d-content').html(response.data.html);
-                $('#model-info #vertex-count').text(response.data.metadata.vertex_count || '--');
-                $('#model-info #face-count').text(response.data.metadata.face_count || '--');
-                $('#model-info #model-volume').text((response.data.metadata.volume || 0).toFixed(0));
+            if (statusResponse.success && statusResponse.data && statusResponse.data.webgl_ready) {
+                // ==================== 使用Three.js预览 ====================
+                console.log('粗胚支持Three.js预览，跳转到新预览页面');
                 
-                // 让Plotly自然适配容器，不强制调整尺寸
-                console.log('3D内容已加载，让其自然适配容器');
-                
-                // 动态调整#scene元素的大小
-                setTimeout(() => {
-                    this.adjustSceneSize();
-                }, 200);
-                
-                console.log('预览加载完成');
-                
-                // ==================== 恢复按钮状态 ====================
-                // 恢复按钮原始状态
+                // 更新按钮状态为预览完成
                 if (previewBtn.length > 0) {
-                    previewBtn.prop('disabled', false);
-                    previewBtn.html(originalContent);
+                    previewBtn.html('<i class="fas fa-check me-1"></i>预览完成');
+                }
+                
+                // 在新标签页中打开Three.js预览页面
+                const previewUrl = `/api/three/blank/${blankId}/`;
+                window.open(previewUrl, '_blank');
+                
+                Utils.showNotification('正在新标签页中打开3D预览...', 'success');
+                
+                // 1秒后恢复按钮原始状态
+                setTimeout(() => {
+                    if (previewBtn.length > 0) {
+                        previewBtn.prop('disabled', false);
+                        previewBtn.html('<i class="fas fa-eye"></i> 预览');
+                    }
+                }, 1000);
+                
+            } else if (statusResponse.success && statusResponse.data && statusResponse.data.has_3dm_file) {
+                // ==================== 需要生成GLB文件 ====================
+                console.log('粗胚暂不支持Three.js预览，尝试生成GLB文件...');
+                
+                // 更新按钮状态显示正在生成GLB
+                if (previewBtn.length > 0) {
+                    previewBtn.html('<i class="fas fa-cogs fa-spin me-1"></i>生成GLB中...');
+                }
+                
+                Utils.showNotification('正在生成3D预览文件，请稍候...', 'info');
+                
+                try {
+                    // 触发LOD处理
+                    const processResponse = await Utils.apiRequest(`/api/lod/blank/${blankId}/process/`, {
+                        method: 'POST'
+                    });
+                    
+                    if (processResponse.success) {
+                        console.log('LOD处理任务已启动，等待完成...');
+                        if (previewBtn.length > 0) {
+                            previewBtn.html('<i class="fas fa-hourglass-half fa-spin me-1"></i>处理中...');
+                        }
+                        
+                        // 轮询检查处理状态（最多等待3分钟）
+                        const maxAttempts = 36; // 3分钟，每5秒检查一次
+                        let attempts = 0;
+                        
+                        const checkStatus = async () => {
+                            attempts++;
+                            if (attempts > maxAttempts) {
+                                Utils.showNotification('预览文件生成时间较长，请稍后再试', 'warning');
+                                return;
+                            }
+                            
+                            const checkResponse = await Utils.apiRequest(`/api/lod/blank/${blankId}/status/`);
+                            
+                            if (checkResponse.success && checkResponse.data && checkResponse.data.webgl_ready) {
+                                // GLB文件已准备好，更新按钮状态为完成
+                                if (previewBtn.length > 0) {
+                                    previewBtn.html('<i class="fas fa-check me-1"></i>预览完成');
+                                }
+                                
+                                console.log('GLB文件生成完成，打开预览页面');
+                                const previewUrl = `/api/three/blank/${blankId}/`;
+                                window.open(previewUrl, '_blank');
+                                Utils.showNotification('3D预览文件生成完成！', 'success');
+                                
+                                // 1秒后恢复按钮原始状态
+                                setTimeout(() => {
+                                    if (previewBtn.length > 0) {
+                                        previewBtn.html('<i class="fas fa-eye me-1"></i>预览');
+                                    }
+                                }, 1000);
+                                
+                                return;
+                            } else {
+                                // 继续等待，更新进度提示
+                                const progress = Math.round((attempts / maxAttempts) * 100);
+                                if (previewBtn.length > 0) {
+                                    previewBtn.html(`<i class="fas fa-hourglass-half fa-spin me-1"></i>处理中 ${progress}%`);
+                                }
+                                
+                                // 5秒后再次检查
+                                setTimeout(checkStatus, 5000);
+                            }
+                        };
+                        
+                        // 开始状态检查
+                        setTimeout(checkStatus, 5000);
+                        
+                    } else {
+                        throw new Error(processResponse.message || 'LOD处理启动失败');
+                    }
+                } catch (processError) {
+                    console.error('启动LOD处理失败:', processError);
+                    Utils.showNotification('生成3D预览文件失败: ' + processError.message, 'error');
+                    if (previewBtn.length > 0) {
+                        previewBtn.html('<i class="fas fa-exclamation-triangle me-1"></i>生成失败');
+                    }
                 }
                 
             } else {
-                throw new Error(response.message || '预览生成失败');
+                // ==================== 强制生成GLB文件 ====================
+                console.log('粗胚没有GLB文件，强制生成GLB文件...');
+                
+                // 更新按钮状态显示正在生成GLB
+                if (previewBtn.length > 0) {
+                    previewBtn.html('<i class="fas fa-cogs fa-spin me-1"></i>生成GLB中...');
+                }
+                
+                Utils.showNotification('粗胚文件需要处理，正在生成3D预览文件...', 'info');
+                
+                try {
+                    // 触发LOD处理
+                    const processResponse = await Utils.apiRequest(`/api/lod/blank/${blankId}/process/`, {
+                        method: 'POST'
+                    });
+                    
+                    if (processResponse.success) {
+                        console.log('LOD处理任务已启动，等待完成...');
+                        if (previewBtn.length > 0) {
+                            previewBtn.html('<i class="fas fa-hourglass-half fa-spin me-1"></i>处理中...');
+                        }
+                        
+                        // 轮询检查处理状态（最多等待5分钟）
+                        const maxAttempts = 60; // 5分钟，每5秒检查一次
+                        let attempts = 0;
+                        
+                        const checkStatus = async () => {
+                            attempts++;
+                            if (attempts > maxAttempts) {
+                                Utils.showNotification('预览文件生成超时，请检查文件是否过大或稍后重试', 'error');
+                                if (previewBtn.length > 0) {
+                                    previewBtn.html('<i class="fas fa-exclamation-triangle me-1"></i>生成失败');
+                                }
+                                return;
+                            }
+                            
+                            const checkResponse = await Utils.apiRequest(`/api/lod/blank/${blankId}/status/`);
+                            
+                            if (checkResponse.success && checkResponse.data && checkResponse.data.webgl_ready) {
+                                // GLB文件已准备好，更新按钮状态为完成
+                                if (previewBtn.length > 0) {
+                                    previewBtn.html('<i class="fas fa-check me-1"></i>预览完成');
+                                }
+                                
+                                console.log('GLB文件生成完成，打开预览页面');
+                                const previewUrl = `/api/three/blank/${blankId}/`;
+                                window.open(previewUrl, '_blank');
+                                Utils.showNotification('3D预览文件生成完成！正在打开预览...', 'success');
+                                
+                                // 1秒后恢复按钮原始状态
+                                setTimeout(() => {
+                                    if (previewBtn.length > 0) {
+                                        previewBtn.html('<i class="fas fa-eye me-1"></i>预览');
+                                    }
+                                }, 1000);
+                                
+                                return;
+                            } else {
+                                // 继续等待，更新进度提示
+                                const progress = Math.round((attempts / maxAttempts) * 100);
+                                if (previewBtn.length > 0) {
+                                    previewBtn.html(`<i class="fas fa-hourglass-half fa-spin me-1"></i>处理中 ${progress}%`);
+                                }
+                                
+                                // 显示详细的处理状态
+                                if (checkResponse.data && checkResponse.data.processing_status) {
+                                    const status = checkResponse.data.processing_status;
+                                    if (status === 'processing') {
+                                        // 显示处理中状态
+                                    } else if (status === 'failed') {
+                                        Utils.showNotification('3D预览文件生成失败，请检查文件格式或稍后重试', 'error');
+                                        if (previewBtn.length > 0) {
+                                            previewBtn.html('<i class="fas fa-exclamation-triangle me-1"></i>生成失败');
+                                        }
+                                        return;
+                                    }
+                                }
+                                
+                                // 5秒后再次检查
+                                setTimeout(checkStatus, 5000);
+                            }
+                        };
+                        
+                        // 开始状态检查
+                        setTimeout(checkStatus, 5000);
+                        
+                    } else {
+                        throw new Error(processResponse.message || 'LOD处理启动失败');
+                    }
+                } catch (processError) {
+                    console.error('启动LOD处理失败:', processError);
+                    Utils.showNotification('生成3D预览文件失败: ' + processError.message, 'error');
+                    if (previewBtn.length > 0) {
+                        previewBtn.html('<i class="fas fa-exclamation-triangle me-1"></i>生成失败');
+                    }
+                }
             }
             
         } catch (error) {
             console.error('预览加载失败:', error);
+            Utils.showNotification('预览加载失败: ' + error.message, 'error');
             
+        } finally {
             // ==================== 恢复按钮状态 ====================
             // 恢复按钮原始状态
             if (previewBtn.length > 0) {
                 previewBtn.prop('disabled', false);
                 previewBtn.html(originalContent);
             }
-            
-            // ==================== 显示错误状态 ====================
-            // 显示错误状态
-            $('#preview-3d-content').html(`
-                <div class="text-center py-5">
-                    <div class="text-danger mb-3">
-                        <i class="fas fa-exclamation-triangle fa-3x"></i>
-                    </div>
-                    <h5 class="text-danger">预览加载失败</h5>
-                    <p class="text-muted">${error.message}</p>
-                    <button class="btn btn-outline-primary" onclick="matchingApp.previewBlank(${blankId})">
-                        <i class="fas fa-redo"></i> 重试
-                    </button>
-                </div>
-            `);
-            
-            Utils.showNotification('预览加载失败: ' + error.message, 'error');
         }
     }
     

@@ -9,13 +9,18 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', include('apps.core.urls')),
+    
+    # API路由 - 必须在其他应用之前
+    path('api/', include('apps.api.urls')),
+    
+    # 其他应用路由
     path('api/blanks/', include('apps.blanks.urls')),
     path('api/shoes/', include('apps.shoes.urls')),
     path('api/matching/', include('apps.matching.urls')),
     path('api/visualization/', include('apps.visualization.urls')),
-    # LOD系统API
-    path('api/', include('apps.api.urls')),
+    
+    # 核心应用 - 放在最后（包含通配符模式）
+    path('', include('apps.core.urls')),
 ]
 
 # 静态文件服务（Docker环境中总是启用）

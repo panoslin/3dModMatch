@@ -101,6 +101,6 @@ urlpatterns = [
     # Three.js预览页面
     path('three/', include(three_urlpatterns)),
     
-    # 向后兼容的健康检查端点
+    # 系统健康检查
     path('health/', lod_views.lod_system_stats_api, name='health'),
 ]

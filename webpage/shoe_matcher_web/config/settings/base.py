@@ -32,6 +32,7 @@ THIRD_PARTY_APPS = [
 
 LOCAL_APPS = [
     'apps.core',
+    'apps.api',
     'apps.blanks',
     'apps.shoes',
     'apps.matching',
