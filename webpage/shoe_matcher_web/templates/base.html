@@ -27,6 +27,21 @@
     <!-- Custom CSS -->
     <link href="{% static 'css/main.css' %}" rel="stylesheet">
     
+    <!-- 导航栏图标样式 -->
+    <style>
+        .navbar-brand svg {
+            transition: transform 0.2s ease;
+        }
+        .navbar-brand:hover svg {
+            transform: scale(1.1);
+        }
+        .navbar-brand {
+            display: flex;
+            align-items: center;
+            font-weight: 600;
+        }
+    </style>
+    
     {% block extra_css %}{% endblock %}
 </head>
 <body>
@@ -34,7 +49,31 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container-fluid">
             <a class="navbar-brand" href="{% url 'core:matching' %}">
-                <i class="fas fa-cube me-2"></i>
+                <!-- 自定义图标 -->
+                <svg width="24" height="24" viewBox="0 0 128 128" class="me-2" style="vertical-align: middle;">
+                  <defs>
+                    <!-- 上圆渐变 -->
+                    <radialGradient id="navTopCircle" cx="30%" cy="30%" r="70%">
+                      <stop offset="0%" style="stop-color:#FF6B9D;stop-opacity:1" />
+                      <stop offset="100%" style="stop-color:#FF3B30;stop-opacity:1" />
+                    </radialGradient>
+                    
+                    <!-- 下圆渐变 -->
+                    <radialGradient id="navBottomCircle" cx="30%" cy="30%" r="70%">
+                      <stop offset="0%" style="stop-color:#5856D6;stop-opacity:1" />
+                      <stop offset="100%" style="stop-color:#AF52DE;stop-opacity:1" />
+                    </radialGradient>
+                  </defs>
+                  
+                  <!-- 上圆 -->
+                  <circle cx="64" cy="48" r="22" fill="url(#navTopCircle)"/>
+                  
+                  <!-- 下圆 (部分重叠) -->
+                  <circle cx="64" cy="80" r="22" fill="url(#navBottomCircle)"/>
+                  
+                  <!-- 重叠区域高光 -->
+                  <ellipse cx="64" cy="64" rx="16" ry="8" fill="rgba(255,255,255,0.3)"/>
+                </svg>
                 3D鞋模智能匹配系统
             </a>
             
