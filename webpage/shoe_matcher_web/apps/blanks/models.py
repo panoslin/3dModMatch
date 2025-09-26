@@ -133,6 +133,25 @@ class BlankModel(BaseModel):
         verbose_name="处理状态"
     )
     
+    # 文件转换信息
+    original_format = models.CharField(
+        max_length=10,
+        default='3dm',
+        verbose_name="原始文件格式",
+        help_text="上传时的原始文件格式，如 .stl, .3dm 等"
+    )
+    conversion_info = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="转换信息",
+        help_text="文件转换的详细信息，包括转换类型、统计数据等"
+    )
+    converted_at = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name="转换时间",
+        help_text="文件转换完成的时间"
+    )
+    
     # 成本信息
     material_cost = models.DecimalField(
         max_digits=10, decimal_places=2,

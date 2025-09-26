@@ -9,6 +9,10 @@ from django.shortcuts import get_object_or_404
 from .models import BlankModel, BlankCategory
 from .serializers import BlankModelSerializer, BlankCategorySerializer
 from .pagination import BlankListPagination
+import os
+
+# 导入文件转换服务
+from utils.file_conversion_service import FileConversionService
 
 
 class BlankListCreateAPIView(generics.ListCreateAPIView):
@@ -27,20 +31,81 @@ class BlankListCreateAPIView(generics.ListCreateAPIView):
     
     
     def create(self, request, *args, **kwargs):
-        """创建新的粗胚"""
+        """创建新的粗胚 - 支持STL自动转换"""
         try:
+            # 检查是否需要文件转换
+            uploaded_file = request.FILES.get('file')
+            if not uploaded_file:
+                return Response({
+                    'success': False,
+                    'error': 'no_file',
+                    'message': '请选择要上传的文件'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            conversion_info = {}
+            original_format = FileConversionService.get_file_format(uploaded_file)
+            
+            # 如果是STL文件，进行自动转换
+            if FileConversionService.is_conversion_needed(uploaded_file):
+                conversion_result = FileConversionService.convert_if_needed(
+                    uploaded_file, 
+                    user=request.user if request.user.is_authenticated else None
+                )
+                
+                if not conversion_result['success']:
+                    return Response({
+                        'success': False,
+                        'error': 'conversion_failed',
+                        'message': f'文件转换失败: {conversion_result["error"]}'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                # 使用转换后的文件 - 确保使用正确的3DM文件名
+                converted_file = conversion_result['converted_file']
+                
+                # 强制修改文件名为3DM格式 - 这次直接修改原始上传文件对象
+                base_name = os.path.splitext(uploaded_file.name)[0]
+                correct_3dm_name = f"{base_name}_converted.3dm"
+                
+                # 关键修复：直接修改上传文件对象的名称
+                uploaded_file.name = correct_3dm_name
+                # 替换文件内容但保持修改后的文件名
+                uploaded_file.file = converted_file.file
+                
+                conversion_info = conversion_result['conversion_info']
+            
+            # 验证和保存模型
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             blank = serializer.save(is_active=True)  # 确保新创建的粗胚是活跃状态
+            
+            # 记录转换信息（如果有转换的话）
+            if conversion_info:
+                from datetime import datetime
+                blank.original_format = original_format.lstrip('.')  # 去掉点号
+                blank.conversion_info = conversion_info
+                blank.converted_at = datetime.now()
+                blank.save()
+                
+                # 转换服务已经返回正确命名的文件，无需重命名操作
+                print(f"[转换成功] 文件已保存为: {blank.file.name}")
             
             # 异步处理3DM文件
             from .tasks import process_blank_file
             process_blank_file.delay(blank.id)
             
+            # 准备响应消息
+            message = '粗胚上传成功，正在处理中...'
+            if conversion_info:
+                message += f' (已从{original_format}格式自动转换)'
+            
+            response_data = serializer.data.copy()
+            if conversion_info:
+                response_data['conversion_info'] = FileConversionService.get_conversion_stats(conversion_info)
+            
             return Response({
                 'success': True,
-                'data': serializer.data,
-                'message': '粗胚上传成功，正在处理中...'
+                'data': response_data,
+                'message': message
             }, status=status.HTTP_201_CREATED)
             
         except Exception as e:

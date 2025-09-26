@@ -1139,11 +1139,19 @@ class MatchingApp {
         const validFiles = [];
         const errors = [];
         
+        let hasStlFiles = false;
+        
         for (let file of files) {
-            // 检查文件格式
-            if (!file.name.toLowerCase().endsWith('.3dm')) {
-                errors.push(`${file.name}: 不是.3dm格式`);
+            // 检查文件格式 - 支持.3dm和.stl
+            const fileName = file.name.toLowerCase();
+            if (!fileName.endsWith('.3dm') && !fileName.endsWith('.stl')) {
+                errors.push(`${file.name}: 只支持.3dm和.stl格式`);
                 continue;
+            }
+            
+            // 检测是否有STL文件
+            if (fileName.endsWith('.stl')) {
+                hasStlFiles = true;
             }
             
             // 检查文件大小
@@ -1171,6 +1179,13 @@ class MatchingApp {
         this.displayFileList(validFiles);
         $('#shoe-file-info').removeClass('d-none');
         $('#confirm-shoe-upload').prop('disabled', false);
+        
+        // 显示转换提示（如果有STL文件）
+        if (hasStlFiles) {
+            $('#format-conversion-notice').removeClass('d-none');
+        } else {
+            $('#format-conversion-notice').addClass('d-none');
+        }
         
         // 更新按钮文本
         if (validFiles.length > 1) {
@@ -2721,11 +2736,17 @@ class MatchingApp {
                             <div class="upload-zone" id="blank-upload-zone">
                                 <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
                                 <h6>拖拽多个文件到此处或点击选择</h6>
-                                <p class="text-muted small">支持.3dm格式，最大100MB每个文件</p>
-                                <input type="file" id="blank-file-input" accept=".3dm" multiple style="display: none;">
+                                <p class="text-muted small">支持.3dm和.stl格式，最大100MB每个文件</p>
+                                <input type="file" id="blank-file-input" accept=".3dm,.stl" multiple style="display: none;">
                                 <button type="button" class="btn btn-outline-primary" id="select-blank-file">
                                     选择多个文件
                                 </button>
+                            </div>
+                            
+                            <!-- 格式转换提示 -->
+                            <div id="blank-format-conversion-notice" class="alert alert-info d-none mt-3">
+                                <i class="fas fa-info-circle me-2"></i>
+                                <strong>自动转换：</strong>检测到STL文件，将自动转换为3DM格式后处理，转换过程可能需要一些时间。
                             </div>
                             
                             <div id="blank-file-info" class="mt-3 d-none">
@@ -2859,10 +2880,18 @@ class MatchingApp {
         const invalidFiles = [];
         let totalSize = 0;
         
+        let hasStlFiles = false;
+        
         files.forEach(file => {
-            if (!file.name.toLowerCase().endsWith('.3dm')) {
-                invalidFiles.push(`${file.name}: 不是.3dm格式`);
+            const fileName = file.name.toLowerCase();
+            if (!fileName.endsWith('.3dm') && !fileName.endsWith('.stl')) {
+                invalidFiles.push(`${file.name}: 只支持.3dm和.stl格式`);
                 return;
+            }
+            
+            // 检测是否有STL文件
+            if (fileName.endsWith('.stl')) {
+                hasStlFiles = true;
             }
             
             if (file.size > CONFIG.UPLOAD_MAX_SIZE) {
@@ -2908,6 +2937,13 @@ class MatchingApp {
         $('#blank-file-list').html(fileListHtml);
         $('#blank-file-info').removeClass('d-none');
         $('#confirm-blank-upload').prop('disabled', false);
+        
+        // 显示转换提示（如果有STL文件）
+        if (hasStlFiles) {
+            $('#blank-format-conversion-notice').removeClass('d-none');
+        } else {
+            $('#blank-format-conversion-notice').addClass('d-none');
+        }
     }
     
     async uploadBlankFiles() {

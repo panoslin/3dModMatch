@@ -15,11 +15,17 @@
                         <div class="upload-zone" id="shoe-upload-zone">
                             <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
                             <h6>拖拽多个文件到此处或点击选择</h6>
-                            <p class="text-muted small">支持.3dm格式，最大100MB每个文件</p>
-                            <input type="file" id="shoe-file-input" accept=".3dm" multiple style="display: none;">
+                            <p class="text-muted small">支持.3dm和.stl格式，最大100MB每个文件</p>
+                            <input type="file" id="shoe-file-input" accept=".3dm,.stl" multiple style="display: none;">
                             <button type="button" class="btn btn-outline-primary" id="select-shoe-file">
                                 选择多个文件
                             </button>
+                        </div>
+                        
+                        <!-- 格式转换提示 -->
+                        <div id="format-conversion-notice" class="alert alert-info d-none mt-3">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>自动转换：</strong>检测到STL文件，将自动转换为3DM格式后处理，转换过程可能需要一些时间。
                         </div>
                         
                         <!-- 文件信息 -->

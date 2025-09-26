@@ -5,13 +5,39 @@
 from django.db import models
 from django.contrib.auth.models import User
 from apps.core.models import BaseModel
+import os
+from pathlib import Path
+
+
+def shoe_upload_path(instance, filename):
+    """
+    自定义鞋模文件上传路径
+    确保转换后的文件有正确的扩展名
+    """
+    from datetime import datetime
+    
+    # 获取文件扩展名
+    file_ext = Path(filename).suffix.lower()
+    
+    # 如果没有扩展名，默认为.3dm（通常是转换后的文件）
+    if not file_ext:
+        file_ext = '.3dm'
+    
+    # 获取基础文件名（不包含扩展名）
+    base_name = Path(filename).stem
+    
+    # 生成日期路径
+    now = datetime.now()
+    date_path = f"shoes/{now.year}/{now.month:02d}/"
+    
+    return f"{date_path}{base_name}{file_ext}"
 
 
 class ShoeModel(BaseModel):
     """鞋模文件模型"""
     name = models.CharField(max_length=255, verbose_name="鞋模名称")
     file = models.FileField(
-        upload_to='shoes/%Y/%m/', 
+        upload_to=shoe_upload_path, 
         verbose_name="3DM文件"
     )
     
@@ -103,6 +129,25 @@ class ShoeModel(BaseModel):
         ],
         default='pending',
         verbose_name="处理状态"
+    )
+    
+    # 文件转换信息
+    original_format = models.CharField(
+        max_length=10,
+        default='3dm',
+        verbose_name="原始文件格式",
+        help_text="上传时的原始文件格式，如 .stl, .3dm 等"
+    )
+    conversion_info = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="转换信息",
+        help_text="文件转换的详细信息，包括转换类型、统计数据等"
+    )
+    converted_at = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name="转换时间",
+        help_text="文件转换完成的时间"
     )
     
     # 备注信息

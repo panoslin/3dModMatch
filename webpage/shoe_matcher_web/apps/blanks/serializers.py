@@ -45,11 +45,13 @@ class BlankModelSerializer(serializers.ModelSerializer):
             'vertex_count', 'face_count', 'dimensions',
             'preview_html', 'thumbnail', 'is_active', 'is_processed',
             'processing_status', 'material_cost',
+            'original_format', 'conversion_info', 'converted_at',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
             'volume', 'bounding_box', 'vertex_count', 'face_count',
             'preview_html', 'is_processed', 'processing_status',
+            'original_format', 'conversion_info', 'converted_at',
             'created_at', 'updated_at'
         ]
     
@@ -76,9 +78,12 @@ class BlankModelSerializer(serializers.ModelSerializer):
         return None
     
     def validate_file(self, value):
-        """验证文件格式"""
-        if not value.name.lower().endswith('.3dm'):
-            raise serializers.ValidationError("只支持.3dm格式文件")
+        """验证文件格式 - 支持.3dm和.stl格式"""
+        allowed_extensions = ['.3dm', '.stl']
+        filename = value.name.lower()
+        
+        if not any(filename.endswith(ext) for ext in allowed_extensions):
+            raise serializers.ValidationError(f"支持的格式：{', '.join(allowed_extensions)}")
         
         # 检查文件大小 (100MB)
         if value.size > 100 * 1024 * 1024:
