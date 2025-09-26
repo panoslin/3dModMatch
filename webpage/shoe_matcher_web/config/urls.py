@@ -6,9 +6,13 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.views.generic import RedirectView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    
+    # Favicon路由
+    path('favicon.ico', RedirectView.as_view(url='/static/favicon.ico', permanent=True)),
     
     # API路由 - 必须在其他应用之前
     path('api/', include('apps.api.urls')),
