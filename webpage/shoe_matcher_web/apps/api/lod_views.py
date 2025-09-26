@@ -528,11 +528,11 @@ def get_lod_data_api(request, model_type: str, model_id: int):
         file_format = request.GET.get('format', 'glb')
         
         # 验证文件格式
-        if file_format != 'glb':
+        if file_format not in ['glb', 'metadata']:
             return JsonResponse({
                 'success': False,
                 'error': 'unsupported_format',
-                'message': f'不支持的文件格式: {file_format}'
+                'message': f'不支持的文件格式: {file_format}，支持的格式: glb, metadata'
             }, status=400)
         
         # 获取模型对象
@@ -556,6 +556,27 @@ def get_lod_data_api(request, model_type: str, model_id: int):
                 'error': 'lod_level_not_found',
                 'message': f'LOD级别 {lod_level} 未找到，可用级别: {available_levels}'
             }, status=404)
+        
+        # 处理元数据请求
+        if file_format == 'metadata':
+            logger.info(f"返回模型元数据: {model_type}/{model_id}")
+            
+            # 构建元数据响应
+            metadata_response = {
+                'success': True,
+                'data': {
+                    'model': {
+                        'vertex_count': model.vertex_count or 0,
+                        'face_count': model.face_count or 0,
+                        'file_size_mb': model.file_size_mb
+                    },
+                    'lod_info': {
+                        'compression_ratio': model.compression_ratio or 0.0
+                    }
+                }
+            }
+            
+            return JsonResponse(metadata_response)
         
         # 获取GLB文件路径（从数据库模型的lod_files字段）
         relative_path = model.lod_files[lod_level]
