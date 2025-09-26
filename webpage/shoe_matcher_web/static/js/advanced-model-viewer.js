@@ -152,7 +152,7 @@
                 }
                 
                 this.modelInfo = statusData.data;
-                this.availableLevels = this.modelInfo.available_levels || ['preview'];
+                this.availableLevels = this.modelInfo.lod_levels || ['preview'];
                 
                 console.log('LOD管理器初始化成功:', this.availableLevels);
                 
