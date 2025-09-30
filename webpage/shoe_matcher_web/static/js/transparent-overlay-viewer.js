@@ -43,6 +43,17 @@ class TransparentOverlayViewer {
         
         // 状态
         this.isActive = false;
+        
+        // 手动调整功能
+        this.interactionMode = 'view';  // 'view' | 'translate' | 'rotate'
+        this.originalShoeTransform = null;  // 保存鞋模原始变换
+        this.isDragging = false;
+        this.previousMouse = { x: 0, y: 0 };
+        
+        // 绑定事件处理器
+        this.boundMouseDown = this.onMouseDown.bind(this);
+        this.boundMouseMove = this.onMouseMove.bind(this);
+        this.boundMouseUp = this.onMouseUp.bind(this);
     }
 
     /**
@@ -68,6 +79,13 @@ class TransparentOverlayViewer {
             this.fitCameraToScene();
             
             this.isActive = true;
+            
+            // 保存鞋模的原始变换（用于重置）
+            this.saveOriginalShoeTransform();
+            
+            // 启用手动调整交互
+            this.enableInteraction();
+            
             this.updateLoadingProgress('加载完成！', 100);
             
             // 延迟隐藏加载提示，让用户看到100%完成
@@ -394,6 +412,176 @@ class TransparentOverlayViewer {
                 </div>
             `;
         }
+    }
+
+    // ========================================================================
+    // 手动调整功能
+    // ========================================================================
+
+    /**
+     * 保存鞋模的原始变换
+     */
+    saveOriginalShoeTransform() {
+        if (!this.targetModel) {
+            console.warn('无法保存原始变换: 鞋模未加载');
+            return;
+        }
+        
+        this.originalShoeTransform = {
+            position: this.targetModel.position.clone(),
+            rotation: this.targetModel.rotation.clone(),
+            quaternion: this.targetModel.quaternion.clone()
+        };
+        
+        console.log('已保存鞋模原始变换');
+    }
+
+    /**
+     * 启用交互
+     */
+    enableInteraction() {
+        const container = this.viewer.renderer.domElement;
+        container.addEventListener('mousedown', this.boundMouseDown);
+        container.addEventListener('mousemove', this.boundMouseMove);
+        container.addEventListener('mouseup', this.boundMouseUp);
+        container.addEventListener('mouseleave', this.boundMouseUp);
+        
+        console.log('已启用手动调整交互');
+    }
+
+    /**
+     * 禁用交互
+     */
+    disableInteraction() {
+        const container = this.viewer.renderer.domElement;
+        container.removeEventListener('mousedown', this.boundMouseDown);
+        container.removeEventListener('mousemove', this.boundMouseMove);
+        container.removeEventListener('mouseup', this.boundMouseUp);
+        container.removeEventListener('mouseleave', this.boundMouseUp);
+        
+        console.log('已禁用手动调整交互');
+    }
+
+    /**
+     * 设置交互模式
+     */
+    setInteractionMode(mode) {
+        this.interactionMode = mode;
+        
+        // 根据模式控制 OrbitControls
+        if (this.viewer.controls) {
+            if (mode === 'view') {
+                this.viewer.controls.enabled = true;
+            } else {
+                // 平移/旋转模式下禁用 OrbitControls 的左键拖拽
+                this.viewer.controls.enabled = false;
+            }
+        }
+        
+        console.log(`切换交互模式: ${mode}`);
+    }
+
+    /**
+     * 鼠标按下事件
+     */
+    onMouseDown(event) {
+        if (this.interactionMode === 'view') return;
+        if (event.button !== 0) return; // 只处理左键
+        
+        this.isDragging = true;
+        this.previousMouse.x = event.clientX;
+        this.previousMouse.y = event.clientY;
+        
+        event.preventDefault();
+    }
+
+    /**
+     * 鼠标移动事件
+     */
+    onMouseMove(event) {
+        if (!this.isDragging) return;
+        
+        const deltaX = event.clientX - this.previousMouse.x;
+        const deltaY = event.clientY - this.previousMouse.y;
+        
+        if (this.interactionMode === 'translate') {
+            this.translateShoe(deltaX, deltaY);
+        } else if (this.interactionMode === 'rotate') {
+            this.rotateShoe(deltaX, deltaY);
+        }
+        
+        this.previousMouse.x = event.clientX;
+        this.previousMouse.y = event.clientY;
+        
+        event.preventDefault();
+    }
+
+    /**
+     * 鼠标释放事件
+     */
+    onMouseUp(event) {
+        this.isDragging = false;
+    }
+
+    /**
+     * 平移鞋模
+     */
+    translateShoe(deltaX, deltaY) {
+        if (!this.targetModel || !this.viewer.camera) return;
+        
+        const camera = this.viewer.camera;
+        const container = this.viewer.renderer.domElement;
+        
+        // 计算移动敏感度（根据相机距离和容器大小）
+        const distance = camera.position.length();
+        const sensitivity = distance / container.clientHeight * 2;
+        
+        // 获取相机的右向量和上向量
+        const right = new THREE.Vector3();
+        const up = new THREE.Vector3();
+        
+        camera.getWorldDirection(right);
+        right.cross(camera.up).normalize();
+        up.copy(camera.up).normalize();
+        
+        // 计算移动向量
+        const moveX = right.multiplyScalar(deltaX * sensitivity);
+        const moveY = up.multiplyScalar(-deltaY * sensitivity);
+        
+        // 应用移动
+        this.targetModel.position.add(moveX);
+        this.targetModel.position.add(moveY);
+    }
+
+    /**
+     * 旋转鞋模
+     */
+    rotateShoe(deltaX, deltaY) {
+        if (!this.targetModel || !this.viewer.camera) return;
+        
+        const sensitivity = 0.005; // 旋转敏感度
+        
+        // 绕 Y 轴旋转（水平拖拽）
+        this.targetModel.rotation.y += deltaX * sensitivity;
+        
+        // 绕 X 轴旋转（垂直拖拽）
+        this.targetModel.rotation.x += deltaY * sensitivity;
+    }
+
+    /**
+     * 重置鞋模变换
+     */
+    resetShoeTransform() {
+        if (!this.targetModel || !this.originalShoeTransform) {
+            console.warn('无法重置: 原始变换未保存');
+            return;
+        }
+        
+        this.targetModel.position.copy(this.originalShoeTransform.position);
+        this.targetModel.rotation.copy(this.originalShoeTransform.rotation);
+        this.targetModel.quaternion.copy(this.originalShoeTransform.quaternion);
+        
+        console.log('已重置鞋模到原始位置');
     }
 }
 

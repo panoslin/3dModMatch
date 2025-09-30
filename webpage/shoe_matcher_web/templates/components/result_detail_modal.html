@@ -119,15 +119,19 @@
                                     <ul class="list-unstyled small mb-0">
                                         <li class="mb-2">
                                             <i class="fas fa-hand-pointer text-info me-2"></i>
-                                            <strong>左键拖拽：</strong>旋转视图
+                                            <strong>查看模式：</strong>左键拖拽旋转视图，右键拖拽平移视图
                                         </li>
                                         <li class="mb-2">
-                                            <i class="fas fa-hand-rock text-warning me-2"></i>
-                                            <strong>右键拖拽：</strong>平移视图
+                                            <i class="fas fa-arrows-alt text-primary me-2"></i>
+                                            <strong>平移鞋模：</strong>左键拖拽移动鞋模位置
+                                        </li>
+                                        <li class="mb-2">
+                                            <i class="fas fa-sync-alt text-info me-2"></i>
+                                            <strong>旋转鞋模：</strong>左键拖拽旋转鞋模角度
                                         </li>
                                         <li class="mb-2">
                                             <i class="fas fa-arrows-alt-v text-success me-2"></i>
-                                            <strong>滚轮：</strong>缩放视图
+                                            <strong>滚轮：</strong>始终用于缩放视图
                                         </li>
                                     </ul>
                                 </div>
@@ -189,6 +193,35 @@
                                     </button>
                                 </div>
                             </div>
+                            
+                            <!-- 3D 交互工具栏 -->
+                            <div class="card-body py-2 px-3 border-bottom" style="background-color: #f8f9fa;">
+                                <div class="d-flex align-items-center">
+                                    <span class="text-muted small me-3">
+                                        <i class="fas fa-tools me-1"></i>调整工具:
+                                    </span>
+                                    <div class="btn-group btn-group-sm" role="group" id="viewer-mode-toolbar">
+                                        <button type="button" class="btn btn-outline-secondary active" data-mode="view" title="旋转和缩放视图">
+                                            <i class="fas fa-eye me-1"></i>查看
+                                        </button>
+                                        <button type="button" class="btn btn-outline-primary" data-mode="translate" title="平移鞋模位置">
+                                            <i class="fas fa-arrows-alt me-1"></i>平移鞋模
+                                        </button>
+                                        <button type="button" class="btn btn-outline-info" data-mode="rotate" title="旋转鞋模角度">
+                                            <i class="fas fa-sync-alt me-1"></i>旋转鞋模
+                                        </button>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline-warning ms-auto" id="reset-shoe-transform" title="恢复到原始对齐位置">
+                                        <i class="fas fa-undo me-1"></i>重置位置
+                                    </button>
+                                </div>
+                                <div class="mt-2">
+                                    <small class="text-muted" id="viewer-mode-hint">
+                                        <i class="fas fa-info-circle me-1"></i>当前模式: <strong>查看模式</strong> - 左键旋转，滚轮缩放
+                                    </small>
+                                </div>
+                            </div>
+                            
                             <div class="card-body p-0">
                                 <div id="heatmap-preview" style="height: 70vh; min-height: 500px;">
                                     <div class="d-flex align-items-center justify-content-center h-100">

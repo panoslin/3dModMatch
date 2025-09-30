@@ -33,6 +33,10 @@ class MatchingApp {
         this.completedMatches = [];          // 已完成的匹配结果
         this.isQueueProcessing = false;      // 队列是否正在处理中
         
+        // ==================== 3D 查看器引用 ====================
+        this.transparentViewer = null;       // ThreeModelViewer 实例
+        this.overlayViewer = null;           // TransparentOverlayViewer 实例
+        
         // 启动应用初始化
         this.init();
     }
@@ -1010,8 +1014,14 @@ class MatchingApp {
                 candidateOpacity: 0.5        // 半透明
             });
             
+            // 保存 overlayViewer 引用，用于手动调整功能
+            this.overlayViewer = overlayViewer;
+            
             // ==================== 加载透明叠加视图 ====================
             await overlayViewer.loadTransparentOverlay(taskId, resultIndex);
+            
+            // ==================== 设置交互工具栏 ====================
+            this.setupViewerToolbar();
             
             console.log(`透明叠加视图加载完成: ${taskId}/${resultIndex}`);
             
@@ -4069,6 +4079,54 @@ class MatchingApp {
     /**
      * 切换热力图预览全屏模式
      */
+    /**
+     * 设置3D查看器工具栏
+     */
+    setupViewerToolbar() {
+        // 移除旧的事件监听器（如果存在）
+        $('#viewer-mode-toolbar').off('click');
+        $('#reset-shoe-transform').off('click');
+        
+        // 模式切换按钮
+        $('#viewer-mode-toolbar button').on('click', (e) => {
+            const button = $(e.currentTarget);
+            const mode = button.data('mode');
+            
+            // 更新按钮状态
+            $('#viewer-mode-toolbar button').removeClass('active');
+            button.addClass('active');
+            
+            // 设置交互模式
+            if (this.overlayViewer) {
+                this.overlayViewer.setInteractionMode(mode);
+            }
+            
+            // 更新提示文字
+            const hints = {
+                'view': '当前模式: <strong>查看模式</strong> - 左键旋转，滚轮缩放',
+                'translate': '当前模式: <strong>平移鞋模</strong> - 左键拖拽移动鞋模位置',
+                'rotate': '当前模式: <strong>旋转鞋模</strong> - 左键拖拽旋转鞋模角度'
+            };
+            $('#viewer-mode-hint').html(`<i class="fas fa-info-circle me-1"></i>${hints[mode]}`);
+            
+            console.log(`切换查看器模式: ${mode}`);
+        });
+        
+        // 重置按钮
+        $('#reset-shoe-transform').on('click', () => {
+            if (this.overlayViewer) {
+                this.overlayViewer.resetShoeTransform();
+                
+                // 切换回查看模式
+                $('#viewer-mode-toolbar button[data-mode="view"]').click();
+                
+                console.log('已重置鞋模位置');
+            }
+        });
+        
+        console.log('已设置3D查看器工具栏');
+    }
+
     toggleHeatmapFullscreen() {
         const modal = document.getElementById('resultDetailModal');
         const button = document.getElementById('fullscreen-heatmap');
