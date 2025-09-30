@@ -1,0 +1,400 @@
+/**
+ * 双模型热力图样式
+ * 
+ * @author AI Assistant
+ * @version 1.0
+ */
+
+/* ==================== 主容器样式 ==================== */
+.dual-model-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: #f8f9fa;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.dual-model-viewer {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+/* ==================== 加载状态样式 ==================== */
+.heatmap-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 400px;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 8px;
+    position: relative;
+}
+
+.loader-container {
+    text-align: center;
+    max-width: 300px;
+}
+
+.loader-spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid #e3f2fd;
+    border-top: 4px solid #2196f3;
+    border-radius: 50%;
+    animation: spin 1.2s linear infinite;
+    margin: 0 auto 16px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loader-text {
+    font-size: 16px;
+    font-weight: 500;
+    color: #495057;
+    margin-bottom: 16px;
+}
+
+.loader-progress {
+    width: 100%;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: #e9ecef;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #2196f3 0%, #21cbf3 100%);
+    border-radius: 4px;
+    animation: progress-fill 2s ease-in-out infinite;
+}
+
+@keyframes progress-fill {
+    0% { width: 0%; }
+    50% { width: 70%; }
+    100% { width: 100%; }
+}
+
+.progress-text {
+    color: #6c757d;
+    font-size: 12px;
+}
+
+/* ==================== 控制面板样式 ==================== */
+.dual-model-controls {
+    background: #ffffff;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    margin-top: 16px;
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.controls-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid #e9ecef;
+    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+    border-radius: 8px 8px 0 0;
+}
+
+.controls-header h5 {
+    margin: 0;
+    color: #495057;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.controls-header i {
+    color: #007bff;
+}
+
+.controls-body {
+    padding: 20px;
+}
+
+.control-group {
+    margin-bottom: 24px;
+}
+
+.control-group:last-child {
+    margin-bottom: 0;
+}
+
+.control-group .form-label {
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 12px;
+    display: block;
+}
+
+.form-check {
+    margin-bottom: 8px;
+}
+
+.form-check-input:checked {
+    background-color: #007bff;
+    border-color: #007bff;
+}
+
+.form-range {
+    margin-bottom: 8px;
+}
+
+.form-range::-webkit-slider-track {
+    background: linear-gradient(90deg, #dc3545 0%, #ffc107 50%, #28a745 100%);
+}
+
+.form-range::-webkit-slider-thumb {
+    background: #ffffff;
+    border: 2px solid #007bff;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+/* ==================== 颜色图例样式 ==================== */
+.color-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    color: #495057;
+}
+
+.color-box {
+    width: 20px;
+    height: 16px;
+    border-radius: 3px;
+    border: 1px solid #dee2e6;
+    flex-shrink: 0;
+}
+
+/* ==================== 统计信息样式 ==================== */
+.stats-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.stat-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-radius: 4px;
+    border-left: 3px solid #007bff;
+}
+
+.stat-label {
+    font-size: 13px;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+.stat-value {
+    font-size: 14px;
+    color: #495057;
+    font-weight: 600;
+}
+
+/* ==================== 响应式设计 ==================== */
+@media (max-width: 768px) {
+    .controls-header {
+        padding: 12px 16px 8px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .controls-body {
+        padding: 16px;
+    }
+
+    .stats-container {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    .color-legend {
+        gap: 6px;
+    }
+
+    .legend-item {
+        font-size: 13px;
+    }
+
+    .control-group {
+        margin-bottom: 20px;
+    }
+}
+
+@media (max-width: 576px) {
+    .heatmap-loading {
+        height: 300px;
+    }
+
+    .loader-container {
+        max-width: 250px;
+    }
+
+    .controls-header h5 {
+        font-size: 16px;
+    }
+}
+
+/* ==================== 特殊状态样式 ==================== */
+.dual-model-controls.loading {
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+.dual-model-controls.error {
+    border-color: #dc3545;
+    background: #fff5f5;
+}
+
+.dual-model-controls.error .controls-header {
+    background: linear-gradient(135deg, #fff5f5 0%, #ffffff 100%);
+    border-bottom-color: #f8d7da;
+}
+
+.dual-model-controls.disabled {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* ==================== 动画和过渡 ==================== */
+.control-group .form-range,
+.control-group .form-check-input {
+    transition: all 0.2s ease;
+}
+
+.control-group .form-range:hover {
+    transform: translateY(-1px);
+}
+
+.stat-item {
+    transition: all 0.2s ease;
+}
+
+.stat-item:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* ==================== 成功提示样式 ==================== */
+.heatmap-success {
+    background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+    border: 1px solid #c3e6cb;
+    color: #155724;
+    padding: 16px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.heatmap-success i {
+    color: #28a745;
+    font-size: 20px;
+}
+
+/* ==================== 错误提示样式 ==================== */
+.heatmap-error {
+    background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+    padding: 16px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.heatmap-error i {
+    color: #dc3545;
+    font-size: 20px;
+}
+
+/* ==================== 工具提示样式 ==================== */
+.tooltip-custom {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 1000;
+    white-space: nowrap;
+}
+
+/* ==================== 3D查看器覆盖样式 ==================== */
+.three-viewer-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.three-viewer-overlay {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 100;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: #495057;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* ==================== 打印样式 ==================== */
+@media print {
+    .dual-model-controls {
+        page-break-inside: avoid;
+    }
+    
+    .heatmap-loading {
+        display: none;
+    }
+}

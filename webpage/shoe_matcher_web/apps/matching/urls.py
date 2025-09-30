@@ -13,4 +13,9 @@ urlpatterns = [
     path('<str:task_id>/result/', views.matching_result_api, name='matching_result'),
     path('<str:task_id>/heatmap-status/', views.heatmap_status_api, name='heatmap_status'),
     path('history/', views.MatchingHistoryAPIView.as_view(), name='matching_history'),
+    
+    # 双模型热力图API端点
+    path('<str:task_id>/alignment-data/<int:result_index>/', 
+         views.get_alignment_data_api, 
+         name='get_alignment_data'),
 ]

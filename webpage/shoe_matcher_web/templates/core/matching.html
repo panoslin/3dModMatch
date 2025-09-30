@@ -202,9 +202,14 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/category-management.css' %}">
+<link rel="stylesheet" href="{% static 'css/dual-model-heatmap.css' %}">
 {% endblock %}
 
 {% block extra_js %}
 <script src="{% static 'js/category-management.js' %}"></script>
 <script src="{% static 'js/matching.js' %}"></script>
+<!-- Three.js 和 3D 可视化脚本 -->
+<script src="{% static 'js/three-model-viewer.js' %}"></script>
+<script src="{% static 'js/dual-model-heatmap.js' %}"></script>
+<script src="{% static 'js/transparent-overlay-viewer.js' %}"></script>
 {% endblock %}

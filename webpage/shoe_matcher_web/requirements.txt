@@ -14,10 +14,13 @@ gunicorn==21.2.0
 
 # 3D处理相关
 numpy==1.26.4
+scipy==1.15.3
 trimesh==3.23.5
 rhino3dm==8.17.0
 pygltflib==1.16.2
 plotly==6.3.0
+scikit-learn==1.7.2
+rtree==1.4.1
 
 # 开发工具
 django-extensions==3.2.3

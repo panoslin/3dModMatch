@@ -327,298 +327,310 @@ def generate_heatmaps_task(self, task_id: str, top_k: int = 4):
     """
     # 直接在这里实现，避免参数传递问题
     from apps.matching.models import MatchingTask
-    from apps.matching.heatmap_tasks import generate_heatmap_locally
+    # from apps.matching.heatmap_tasks import generate_heatmap_locally  # 已删除
     from django.conf import settings
     from pathlib import Path
     import logging
     
     logger = logging.getLogger(__name__)
     
+    # 热力图功能已被透明叠加视图取代
+    logger.warning(f"generate_heatmaps_task is deprecated: task_id={task_id}")
     try:
+        task = MatchingTask.objects.get(task_id=task_id)
+        task.heatmap_status = 'failed'
+        task.heatmap_data = {'error': '热力图功能已被透明叠加视图取代'}
+        task.save()
+    except Exception as e:
+        logger.error(f"Error updating task status: {e}")
+    return {'success': False, 'message': '热力图功能已被透明叠加视图取代'}
+    
+    # 以下代码已弃用 - 原热力图生成代码已移除
+    # try:
         # ==================== 第一步：验证匹配任务状态 ====================
         # 获取匹配任务实例
-        task = MatchingTask.objects.get(task_id=task_id)
+#         task = MatchingTask.objects.get(task_id=task_id)
         
-        # 检查匹配任务是否已完成，只有完成的匹配才能生成热力图
-        if task.status != 'completed':
-            logger.warning(f"任务 {task_id} 未完成，无法生成热力图")
-            return {'success': False, 'message': '匹配任务未完成'}
+#         # 检查匹配任务是否已完成，只有完成的匹配才能生成热力图
+#         if task.status != 'completed':
+#             logger.warning(f"任务 {task_id} 未完成，无法生成热力图")
+#             return {'success': False, 'message': '匹配任务未完成'}
         
-        # 获取匹配结果数据
-        results = task.result_data.get('results', [])
-        if not results:
-            return {'success': False, 'message': '没有匹配结果'}
+#         # 获取匹配结果数据
+#         results = task.result_data.get('results', [])
+#         if not results:
+#             return {'success': False, 'message': '没有匹配结果'}
         
-        # ==================== 第二步：初始化热力图生成状态 ====================
-        # 更新任务的热力图状态为生成中
-        task.heatmap_status = 'generating'
-        task.heatmap_data = {'progress': 0, 'message': '开始生成热力图...'}
-        task.save()
+#         # ==================== 第二步：初始化热力图生成状态 ====================
+#         # 更新任务的热力图状态为生成中
+#         task.heatmap_status = 'generating'
+#         task.heatmap_data = {'progress': 0, 'message': '开始生成热力图...'}
+#         task.save()
         
-        # ==================== 第三步：准备热力图输出目录 ====================
-        # 在媒体根目录下创建热力图专用目录
-        heatmap_dir = Path(settings.MEDIA_ROOT) / 'heatmaps' / task_id
-        heatmap_dir.mkdir(parents=True, exist_ok=True)
+#         # ==================== 第三步：准备热力图输出目录 ====================
+#         # 在媒体根目录下创建热力图专用目录
+#         heatmap_dir = Path(settings.MEDIA_ROOT) / 'heatmaps' / task_id
+#         heatmap_dir.mkdir(parents=True, exist_ok=True)
         
-        # 获取目标鞋模文件路径，用于热力图生成
-        target_path = Path(settings.MEDIA_ROOT) / task.shoe_model.file.name
+#         # 获取目标鞋模文件路径，用于热力图生成
+#         target_path = Path(settings.MEDIA_ROOT) / task.shoe_model.file.name
         
-        # ==================== 第四步：生成热力图 ====================
-        # 初始化热力图生成结果列表
-        generated_heatmaps = []
-        # 计算实际需要生成的热力图数量（不超过结果总数）
-        total_to_generate = min(top_k, len(results))
+#         # ==================== 第四步：生成热力图 ====================
+#         # 初始化热力图生成结果列表
+#         generated_heatmaps = []
+#         # 计算实际需要生成的热力图数量（不超过结果总数）
+#         total_to_generate = min(top_k, len(results))
         
-        # 遍历前K个最佳匹配结果，为每个结果生成热力图
-        for i, result in enumerate(results[:total_to_generate]):
-            try:
-                # ==================== 第五步：更新热力图生成进度 ====================
-                # 计算当前进度百分比
-                progress = int((i / total_to_generate) * 100)
-                # 更新任务状态，显示当前生成进度
-                task.heatmap_data = {
-                    'progress': progress,
-                    'message': f'正在生成第 {i+1}/{total_to_generate} 个热力图...'
-                }
-                task.save()
+#         # 遍历前K个最佳匹配结果，为每个结果生成热力图
+#         for i, result in enumerate(results[:total_to_generate]):
+#             try:
+#                 # ==================== 第五步：更新热力图生成进度 ====================
+#                 # 计算当前进度百分比
+#                 progress = int((i / total_to_generate) * 100)
+#                 # 更新任务状态，显示当前生成进度
+#                 task.heatmap_data = {
+#                     'progress': progress,
+#                     'message': f'正在生成第 {i+1}/{total_to_generate} 个热力图...'
+#                 }
+#                 task.save()
                 
-                # ==================== 第六步：处理粗胚文件路径 ====================
-                # 获取粗胚文件路径（支持多种路径字段名）
-                blank_path = result.get('blank_path') or result.get('path')
-                if not blank_path:
-                    continue
+#                 # ==================== 第六步：处理粗胚文件路径 ====================
+#                 # 获取粗胚文件路径（支持多种路径字段名）
+#                 blank_path = result.get('blank_path') or result.get('path')
+#                 if not blank_path:
+#                     continue
                     
-                # 处理Docker环境中的路径映射问题
-                if '/app/candidates/' in str(blank_path):
-                    blank_name = Path(blank_path).name
-                    # 在Celery容器中查找实际的粗胚文件位置
-                    possible_paths = [
-                        Path('/app/media/blanks/2025/09') / blank_name,  # 2025年9月上传的文件
-                        Path('/app/media/blanks/2025/01') / blank_name,  # 2025年1月上传的文件
-                        Path('/app/media/blanks') / blank_name,         # 默认位置
-                    ]
-                    blank_path = None
-                    # 尝试在可能的路径中找到文件
-                    for p in possible_paths:
-                        if p.exists():
-                            blank_path = p
-                            break
-                    if not blank_path:
-                        logger.warning(f"找不到粗胚文件: {blank_name}")
-                        continue
+#                 # 处理Docker环境中的路径映射问题
+#                 if '/app/candidates/' in str(blank_path):
+#                     blank_name = Path(blank_path).name
+#                     # 在Celery容器中查找实际的粗胚文件位置
+#                     possible_paths = [
+#                         Path('/app/media/blanks/2025/09') / blank_name,  # 2025年9月上传的文件
+#                         Path('/app/media/blanks/2025/01') / blank_name,  # 2025年1月上传的文件
+#                         Path('/app/media/blanks') / blank_name,         # 默认位置
+#                     ]
+#                     blank_path = None
+#                     # 尝试在可能的路径中找到文件
+#                     for p in possible_paths:
+#                         if p.exists():
+#                             blank_path = p
+#                             break
+#                     if not blank_path:
+#                         logger.warning(f"找不到粗胚文件: {blank_name}")
+#                         continue
                 
-                # ==================== 第七步：准备热力图文件 ====================
-                # 生成热力图文件名和路径
-                blank_name = result.get('blank_name', f'result_{i+1}')
-                # 清理文件名中的.3dm后缀，避免重复
-                if blank_name.endswith('.3dm'):
-                    blank_name = blank_name[:-4]
-                # 生成格式化的热力图文件名：01_result1_heatmap.html
-                heatmap_filename = f"{i+1:02d}_{blank_name}_heatmap.html"
-                heatmap_path = heatmap_dir / heatmap_filename
+#                 # ==================== 第七步：准备热力图文件 ====================
+#                 # 生成热力图文件名和路径
+#                 blank_name = result.get('blank_name', f'result_{i+1}')
+#                 # 清理文件名中的.3dm后缀，避免重复
+#                 if blank_name.endswith('.3dm'):
+#                     blank_name = blank_name[:-4]
+#                 # 生成格式化的热力图文件名：01_result1_heatmap.html
+#                 heatmap_filename = f"{i+1:02d}_{blank_name}_heatmap.html"
+#                 heatmap_path = heatmap_dir / heatmap_filename
                 
-                # 记录热力图生成开始
-                logger.info(f"生成热力图: {heatmap_filename}")
-                success = False
+#                 # 记录热力图生成开始
+#                 logger.info(f"生成热力图: {heatmap_filename}")
+#                 success = False
                 
-                try:
-                    import subprocess
-                    import json
+#                 try:
+#                     import subprocess
+#                     import json
                     
-                    # ==================== 第八步：生成热力图可视化脚本 ====================
-                    # 创建临时Python脚本来生成交互式3D热力图
-                    # 使用Plotly和rhino3dm库处理3D模型数据
-                    script_content = f'''
-import sys
-import json
-import numpy as np
-import plotly.graph_objects as go
-from pathlib import Path
-import rhino3dm
+#                     # ==================== 第八步：生成热力图可视化脚本 ====================
+#                     # 创建临时Python脚本来生成交互式3D热力图
+#                     # 使用Plotly和rhino3dm库处理3D模型数据
+#                     script_content = f'''
+# import sys
+# import json
+# import numpy as np
+# import plotly.graph_objects as go
+# from pathlib import Path
+# import rhino3dm
 
-def generate_simple_heatmap():
-    """生成3D匹配结果热力图"""
-    target_path = "{target_path}"      # 目标鞋模文件路径
-    blank_path = "{blank_path}"        # 候选粗胚文件路径
-    output_path = "{heatmap_path}"     # 输出热力图文件路径
+# def generate_simple_heatmap():
+#     """生成3D匹配结果热力图"""
+#     target_path = "{target_path}"      # 目标鞋模文件路径
+#     blank_path = "{blank_path}"        # 候选粗胚文件路径
+#     output_path = "{heatmap_path}"     # 输出热力图文件路径
     
-    try:
-        # ==================== 加载3DM文件 ====================
-        # 使用rhino3dm库加载目标鞋模和候选粗胚的3DM文件
-        target_model = rhino3dm.File3dm.Read(target_path)
-        blank_model = rhino3dm.File3dm.Read(blank_path)
+#     try:
+#         # ==================== 加载3DM文件 ====================
+#         # 使用rhino3dm库加载目标鞋模和候选粗胚的3DM文件
+#         target_model = rhino3dm.File3dm.Read(target_path)
+#         blank_model = rhino3dm.File3dm.Read(blank_path)
         
-        if not target_model or not blank_model:
-            print("无法加载3DM文件")
-            return False
+#         if not target_model or not blank_model:
+#             print("无法加载3DM文件")
+#             return False
             
-        # ==================== 提取网格数据 ====================
-        # 从3DM文件中提取第一个网格对象（假设每个文件只有一个主要网格）
-        target_mesh = None
-        blank_mesh = None
+#         # ==================== 提取网格数据 ====================
+#         # 从3DM文件中提取第一个网格对象（假设每个文件只有一个主要网格）
+#         target_mesh = None
+#         blank_mesh = None
         
-        # 遍历目标模型中的所有对象，找到网格类型
-        for obj in target_model.Objects:
-            if obj.Geometry.ObjectType == rhino3dm.ObjectType.Mesh:
-                target_mesh = obj.Geometry
-                break
+#         # 遍历目标模型中的所有对象，找到网格类型
+#         for obj in target_model.Objects:
+#             if obj.Geometry.ObjectType == rhino3dm.ObjectType.Mesh:
+#                 target_mesh = obj.Geometry
+#                 break
                 
-        # 遍历粗胚模型中的所有对象，找到网格类型
-        for obj in blank_model.Objects:
-            if obj.Geometry.ObjectType == rhino3dm.ObjectType.Mesh:
-                blank_mesh = obj.Geometry
-                break
+#         # 遍历粗胚模型中的所有对象，找到网格类型
+#         for obj in blank_model.Objects:
+#             if obj.Geometry.ObjectType == rhino3dm.ObjectType.Mesh:
+#                 blank_mesh = obj.Geometry
+#                 break
                 
-        if not target_mesh or not blank_mesh:
-            print("未找到网格数据")
-            return False
+#         if not target_mesh or not blank_mesh:
+#             print("未找到网格数据")
+#             return False
             
-        # ==================== 提取几何数据 ====================
-        # 获取网格的顶点坐标（X, Y, Z）
-        target_vertices = [[v.X, v.Y, v.Z] for v in target_mesh.Vertices]
-        blank_vertices = [[v.X, v.Y, v.Z] for v in blank_mesh.Vertices]
+#         # ==================== 提取几何数据 ====================
+#         # 获取网格的顶点坐标（X, Y, Z）
+#         target_vertices = [[v.X, v.Y, v.Z] for v in target_mesh.Vertices]
+#         blank_vertices = [[v.X, v.Y, v.Z] for v in blank_mesh.Vertices]
         
-        # 获取网格的面索引（三角形面的顶点索引）
-        target_faces = [[f.A, f.B, f.C] for f in target_mesh.Faces]
-        blank_faces = [[f.A, f.B, f.C] for f in blank_mesh.Faces]
+#         # 获取网格的面索引（三角形面的顶点索引）
+#         target_faces = [[f.A, f.B, f.C] for f in target_mesh.Faces]
+#         blank_faces = [[f.A, f.B, f.C] for f in blank_mesh.Faces]
         
-        # ==================== 计算热力图数据 ====================
-        # 创建基于高度的简单热力图（实际应用中应该使用匹配算法计算的间隙数据）
-        blank_z_values = [v[2] for v in blank_vertices]  # 提取Z坐标（高度）
-        min_z = min(blank_z_values)                      # 最小高度
-        max_z = max(blank_z_values)                      # 最大高度
-        # 将高度值归一化到0-10范围，用于颜色映射
-        normalized_z = [(z - min_z) / (max_z - min_z) * 10 for z in blank_z_values]
+#         # ==================== 计算热力图数据 ====================
+#         # 创建基于高度的简单热力图（实际应用中应该使用匹配算法计算的间隙数据）
+#         blank_z_values = [v[2] for v in blank_vertices]  # 提取Z坐标（高度）
+#         min_z = min(blank_z_values)                      # 最小高度
+#         max_z = max(blank_z_values)                      # 最大高度
+#         # 将高度值归一化到0-10范围，用于颜色映射
+#         normalized_z = [(z - min_z) / (max_z - min_z) * 10 for z in blank_z_values]
         
-        # ==================== 创建Plotly 3D图形 ====================
-        fig = go.Figure()
+#         # ==================== 创建Plotly 3D图形 ====================
+#         fig = go.Figure()
         
-        # 添加目标鞋模网格（半透明灰色，作为参考）
-        fig.add_trace(go.Mesh3d(
-            x=[v[0] for v in target_vertices],           # X坐标
-            y=[v[1] for v in target_vertices],           # Y坐标
-            z=[v[2] for v in target_vertices],           # Z坐标
-            i=[f[0] for f in target_faces],              # 面的第一个顶点索引
-            j=[f[1] for f in target_faces],              # 面的第二个顶点索引
-            k=[f[2] for f in target_faces],              # 面的第三个顶点索引
-            name='目标鞋楦',                              # 图例名称
-            color='lightgray',                           # 固定颜色
-            opacity=0.3                                  # 透明度
-        ))
+#         # 添加目标鞋模网格（半透明灰色，作为参考）
+#         fig.add_trace(go.Mesh3d(
+#             x=[v[0] for v in target_vertices],           # X坐标
+#             y=[v[1] for v in target_vertices],           # Y坐标
+#             z=[v[2] for v in target_vertices],           # Z坐标
+#             i=[f[0] for f in target_faces],              # 面的第一个顶点索引
+#             j=[f[1] for f in target_faces],              # 面的第二个顶点索引
+#             k=[f[2] for f in target_faces],              # 面的第三个顶点索引
+#             name='目标鞋楦',                              # 图例名称
+#             color='lightgray',                           # 固定颜色
+#             opacity=0.3                                  # 透明度
+#         ))
         
-        # 添加候选粗胚网格（带热力图颜色映射）
-        fig.add_trace(go.Mesh3d(
-            x=[v[0] for v in blank_vertices],           # X坐标
-            y=[v[1] for v in blank_vertices],           # Y坐标
-            z=[v[2] for v in blank_vertices],           # Z坐标
-            i=[f[0] for f in blank_faces],              # 面的第一个顶点索引
-            j=[f[1] for f in blank_faces],              # 面的第二个顶点索引
-            k=[f[2] for f in blank_faces],              # 面的第三个顶点索引
-            intensity=normalized_z,                     # 颜色强度数据（基于高度）
-            colorscale='RdYlGn',                        # 红-黄-绿颜色映射
-            cmin=0,                                     # 颜色映射最小值
-            cmax=10,                                    # 颜色映射最大值
-            colorbar=dict(title='间隙 (mm)'),           # 颜色条标题
-            name='匹配粗胚',                              # 图例名称
-            opacity=0.9                                 # 透明度
-        ))
+#         # 添加候选粗胚网格（带热力图颜色映射）
+#         fig.add_trace(go.Mesh3d(
+#             x=[v[0] for v in blank_vertices],           # X坐标
+#             y=[v[1] for v in blank_vertices],           # Y坐标
+#             z=[v[2] for v in blank_vertices],           # Z坐标
+#             i=[f[0] for f in blank_faces],              # 面的第一个顶点索引
+#             j=[f[1] for f in blank_faces],              # 面的第二个顶点索引
+#             k=[f[2] for f in blank_faces],              # 面的第三个顶点索引
+#             intensity=normalized_z,                     # 颜色强度数据（基于高度）
+#             colorscale='RdYlGn',                        # 红-黄-绿颜色映射
+#             cmin=0,                                     # 颜色映射最小值
+#             cmax=10,                                    # 颜色映射最大值
+#             colorbar=dict(title='间隙 (mm)'),           # 颜色条标题
+#             name='匹配粗胚',                              # 图例名称
+#             opacity=0.9                                 # 透明度
+#         ))
         
-        # ==================== 配置图形布局 ====================
-        # 设置3D图形的标题、坐标轴标签和尺寸
-        fig.update_layout(
-            title='间隙热力图',                           # 图形标题
-            scene=dict(
-                xaxis_title='X (mm)',                   # X轴标签
-                yaxis_title='Y (mm)',                   # Y轴标签
-                zaxis_title='Z (mm)',                   # Z轴标签
-                aspectmode='data'                       # 保持数据比例
-            ),
-            width=1400,                                 # 图形宽度
-            height=900                                  # 图形高度
-        )
+#         # ==================== 配置图形布局 ====================
+#         # 设置3D图形的标题、坐标轴标签和尺寸
+#         fig.update_layout(
+#             title='间隙热力图',                           # 图形标题
+#             scene=dict(
+#                 xaxis_title='X (mm)',                   # X轴标签
+#                 yaxis_title='Y (mm)',                   # Y轴标签
+#                 zaxis_title='Z (mm)',                   # Z轴标签
+#                 aspectmode='data'                       # 保持数据比例
+#             ),
+#             width=1400,                                 # 图形宽度
+#             height=900                                  # 图形高度
+#         )
         
-        # ==================== 保存HTML文件 ====================
-        # 确保输出目录存在，然后保存交互式HTML热力图
-        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        fig.write_html(output_path)
-        print(f"热力图已保存: {{output_path}}")
-        return True
+#         # ==================== 保存HTML文件 ====================
+#         # 确保输出目录存在，然后保存交互式HTML热力图
+#         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+#         fig.write_html(output_path)
+#         print(f"热力图已保存: {{output_path}}")
+#         return True
         
-    except Exception as e:
-        print(f"生成热力图失败: {{e}}")
-        return False
+#     except Exception as e:
+#         print(f"生成热力图失败: {{e}}")
+#         return False
 
-if __name__ == "__main__":
-    success = generate_simple_heatmap()
-    sys.exit(0 if success else 1)
-'''
+# if __name__ == "__main__":
+#     success = generate_simple_heatmap()
+#     sys.exit(0 if success else 1)
+# '''
                     
-                    # ==================== 第九步：执行热力图生成脚本 ====================
-                    # 将脚本内容保存为临时Python文件
-                    script_path = heatmap_dir / f'temp_heatmap_{i}.py'
-                    script_path.write_text(script_content)
+#                     # ==================== 第九步：执行热力图生成脚本 ====================
+#                     # 将脚本内容保存为临时Python文件
+#                     script_path = heatmap_dir / f'temp_heatmap_{i}.py'
+#                     script_path.write_text(script_content)
                     
-                    # 在子进程中执行热力图生成脚本，设置60秒超时
-                    result_proc = subprocess.run([
-                        'python3', str(script_path)
-                    ], capture_output=True, text=True, timeout=60)
+#                     # 在子进程中执行热力图生成脚本，设置60秒超时
+#                     result_proc = subprocess.run([
+#                         'python3', str(script_path)
+#                     ], capture_output=True, text=True, timeout=60)
                     
-                    # 检查脚本执行是否成功且输出文件存在
-                    success = result_proc.returncode == 0 and heatmap_path.exists()
+#                     # 检查脚本执行是否成功且输出文件存在
+#                     success = result_proc.returncode == 0 and heatmap_path.exists()
                     
-                    # 清理临时脚本文件
-                    if script_path.exists():
-                        script_path.unlink()
+#                     # 清理临时脚本文件
+#                     if script_path.exists():
+#                         script_path.unlink()
                         
-                    if not success:
-                        logger.error(f"热力图生成失败: {result_proc.stderr}")
+#                     if not success:
+#                         logger.error(f"热力图生成失败: {result_proc.stderr}")
                         
-                except Exception as e:
-                    logger.error(f"热力图生成异常: {e}")
-                    success = False
+#                 except Exception as e:
+#                     logger.error(f"热力图生成异常: {e}")
+#                     success = False
                 
-                # ==================== 第十步：记录成功生成的热力图 ====================
-                # 如果热力图生成成功，记录到结果列表中
-                if success and heatmap_path.exists():
-                    relative_path = f'heatmaps/{task_id}/{heatmap_filename}'
-                    generated_heatmaps.append({
-                        'index': i,                                    # 结果索引
-                        'blank_name': blank_name,                     # 粗胚名称
-                        'filename': heatmap_filename,                 # 文件名
-                        'path': relative_path,                        # 相对路径
-                        'url': f'/media/{relative_path}'              # 访问URL
-                    })
-                    logger.info(f"热力图生成成功: {heatmap_filename}")
+#                 # ==================== 第十步：记录成功生成的热力图 ====================
+#                 # 如果热力图生成成功，记录到结果列表中
+#                 if success and heatmap_path.exists():
+#                     relative_path = f'heatmaps/{task_id}/{heatmap_filename}'
+#                     generated_heatmaps.append({
+#                         'index': i,                                    # 结果索引
+#                         'blank_name': blank_name,                     # 粗胚名称
+#                         'filename': heatmap_filename,                 # 文件名
+#                         'path': relative_path,                        # 相对路径
+#                         'url': f'/media/{relative_path}'              # 访问URL
+#                     })
+#                     logger.info(f"热力图生成成功: {heatmap_filename}")
                     
-            except Exception as e:
-                # 单个热力图生成失败，记录错误但继续处理其他结果
-                logger.error(f"生成热力图 {i+1} 时出错: {e}")
-                continue
+#             except Exception as e:
+#                 # 单个热力图生成失败，记录错误但继续处理其他结果
+#                 logger.error(f"生成热力图 {i+1} 时出错: {e}")
+#                 continue
         
-        # ==================== 第十一步：更新任务最终状态 ====================
-        # 根据热力图生成结果更新任务状态
-        if generated_heatmaps:
-            # 热力图生成成功，更新任务状态为完成
-            task.heatmap_status = 'completed'
-            task.heatmap_data = {
-                'progress': 100,                                           # 进度100%
-                'message': f'成功生成 {len(generated_heatmaps)} 个热力图',  # 成功消息
-                'heatmaps': generated_heatmaps                             # 热力图列表
-            }
-            task.heatmap_dir = str(heatmap_dir)                            # 保存热力图目录路径
-            task.save()
-            return {'success': True, 'heatmaps': generated_heatmaps}
-        else:
-            # 没有成功生成任何热力图，标记为失败
-            task.heatmap_status = 'failed'
-            task.heatmap_data = {'error': '无法生成热力图'}
-            task.save()
-            return {'success': False, 'message': '热力图生成失败'}
+#         # ==================== 第十一步：更新任务最终状态 ====================
+#         # 根据热力图生成结果更新任务状态
+#         if generated_heatmaps:
+#             # 热力图生成成功，更新任务状态为完成
+#             task.heatmap_status = 'completed'
+#             task.heatmap_data = {
+#                 'progress': 100,                                           # 进度100%
+#                 'message': f'成功生成 {len(generated_heatmaps)} 个热力图',  # 成功消息
+#                 'heatmaps': generated_heatmaps                             # 热力图列表
+#             }
+#             task.heatmap_dir = str(heatmap_dir)                            # 保存热力图目录路径
+#             task.save()
+#             return {'success': True, 'heatmaps': generated_heatmaps}
+#         else:
+#             # 没有成功生成任何热力图，标记为失败
+#             task.heatmap_status = 'failed'
+#             task.heatmap_data = {'error': '无法生成热力图'}
+#             task.save()
+#             return {'success': False, 'message': '热力图生成失败'}
             
-    except Exception as e:
-        # ==================== 异常处理 ====================
-        # 捕获所有未处理的异常，记录错误并返回失败状态
-        logger.error(f"热力图生成任务失败: {e}")
-        return {'success': False, 'error': str(e)}
+#     except Exception as e:
+#         # ==================== 异常处理 ====================
+#         # 捕获所有未处理的异常，记录错误并返回失败状态
+#         logger.error(f"热力图生成任务失败: {e}")
+#         return {'success': False, 'error': str(e)}
 
 

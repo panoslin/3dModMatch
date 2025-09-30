@@ -3,6 +3,7 @@
 """
 
 from django.db import models
+from django.utils import timezone
 from apps.core.models import BaseModel
 from apps.shoes.models import ShoeModel
 from apps.blanks.models import BlankCategory
@@ -134,6 +135,30 @@ class MatchingTask(BaseModel):
         verbose_name="热力图数据"
     )
     
+    # 双模型热力图支持
+    dual_heatmap_status = models.CharField(
+        max_length=20,
+        choices=HEATMAP_STATUS_CHOICES,
+        default='not_started',
+        verbose_name="双模型热力图状态"
+    )
+    dual_heatmap_data = models.JSONField(
+        default=dict,
+        verbose_name="双模型热力图数据"
+    )
+    
+    # 对齐数据存储
+    alignment_data = models.JSONField(
+        default=dict,
+        verbose_name="对齐数据"
+    )
+    
+    # 间隙计算缓存
+    clearance_cache = models.JSONField(
+        default=dict,
+        verbose_name="间隙计算缓存"
+    )
+    
     class Meta:
         verbose_name = "匹配任务"
         verbose_name_plural = "匹配任务"
@@ -182,3 +207,62 @@ class MatchingTask(BaseModel):
         ))
         
         return sorted_results[0] if sorted_results else None
+    
+    def save_alignment_data(self, result_index: int, alignment_metadata: dict):
+        """保存对齐数据"""
+        if 'results_alignment' not in self.alignment_data:
+            self.alignment_data['results_alignment'] = {}
+        
+        self.alignment_data['results_alignment'][str(result_index)] = alignment_metadata
+        self.alignment_data['updated_at'] = timezone.now().isoformat()
+        self.save(update_fields=['alignment_data'])
+    
+    def get_alignment_data(self, result_index: int) -> dict:
+        """获取指定结果的对齐数据"""
+        if not self.alignment_data or 'results_alignment' not in self.alignment_data:
+            return {}
+        
+        return self.alignment_data['results_alignment'].get(str(result_index), {})
+    
+    def save_clearance_cache(self, result_index: int, clearance_data: dict):
+        """保存间隙计算缓存（包含完整数据用于前端渲染）"""
+        if 'results_clearance' not in self.clearance_cache:
+            self.clearance_cache['results_clearance'] = {}
+        
+        # 将 numpy 数组转换为列表以支持 JSON 序列化
+        clearances = clearance_data.get('clearances', [])
+        sample_indices = clearance_data.get('sample_indices', [])
+        
+        if hasattr(clearances, 'tolist'):
+            clearances = clearances.tolist()
+        if hasattr(sample_indices, 'tolist'):
+            sample_indices = sample_indices.tolist()
+        
+        # 保存完整数据（采样后的数组较小，约 78KB/10K 点）
+        cache_data = {
+            'clearances': clearances,
+            'sample_indices': sample_indices,
+            'min_clearance': clearance_data.get('min_clearance'),
+            'max_clearance': clearance_data.get('max_clearance'),
+            'mean_clearance': clearance_data.get('mean_clearance'),
+            'p01_clearance': clearance_data.get('p01_clearance'),
+            'p05_clearance': clearance_data.get('p05_clearance'),
+            'p15_clearance': clearance_data.get('p15_clearance'),
+            'inside_ratio': clearance_data.get('inside_ratio'),
+            'vertex_count': clearance_data.get('vertex_count'),
+            'total_vertices': clearance_data.get('total_vertices'),
+            'method': clearance_data.get('method'),
+            'computation_time': clearance_data.get('computation_time'),
+            'coordinate_system': clearance_data.get('coordinate_system'),
+            'cached_at': timezone.now().isoformat()
+        }
+        
+        self.clearance_cache['results_clearance'][str(result_index)] = cache_data
+        self.save(update_fields=['clearance_cache'])
+    
+    def get_clearance_cache(self, result_index: int) -> dict:
+        """获取间隙计算缓存"""
+        if not self.clearance_cache or 'results_clearance' not in self.clearance_cache:
+            return {}
+        
+        return self.clearance_cache['results_clearance'].get(str(result_index), {})

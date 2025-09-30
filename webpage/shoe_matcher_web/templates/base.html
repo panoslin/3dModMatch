@@ -24,6 +24,34 @@
     <!-- Plotly.js -->
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     
+    <!-- Three.js 核心库和必要扩展 (本地文件，避免CDN被墙) -->
+    <script src="{% static 'js/vendor/three.min.js' %}"></script>
+    <script>
+        // Three.js扩展加载器和控制器兼容性脚本
+        if (typeof THREE !== 'undefined') {
+            console.log('✅ Three.js 核心库加载成功，版本:', THREE.REVISION);
+            // GLTFLoader
+            if (!THREE.GLTFLoader && window.GLTFLoader) {
+                THREE.GLTFLoader = window.GLTFLoader;
+            }
+            // OrbitControls
+            if (!THREE.OrbitControls && window.OrbitControls) {
+                THREE.OrbitControls = window.OrbitControls;
+            }
+        } else {
+            console.error('❌ Three.js 核心库加载失败！');
+        }
+    </script>
+    <script src="{% static 'js/vendor/GLTFLoader.js' %}"></script>
+    <script src="{% static 'js/vendor/OrbitControls.js' %}"></script>
+    <script>
+        // 验证扩展是否加载成功
+        if (typeof THREE !== 'undefined') {
+            console.log('✅ GLTFLoader 可用:', typeof THREE.GLTFLoader !== 'undefined' || typeof window.GLTFLoader !== 'undefined');
+            console.log('✅ OrbitControls 可用:', typeof THREE.OrbitControls !== 'undefined' || typeof window.OrbitControls !== 'undefined');
+        }
+    </script>
+    
     <!-- Custom CSS -->
     <link href="{% static 'css/main.css' %}" rel="stylesheet">
     

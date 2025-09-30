@@ -1,17 +1,17 @@
 <!-- 匹配结果详情Modal -->
 <div class="modal fade" id="resultDetailModal" tabindex="-1" aria-labelledby="resultDetailModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl">
-        <div class="modal-content">
+    <div class="modal-dialog modal-fullscreen-xl-down" style="max-width: 95vw;">
+        <div class="modal-content" style="height: 95vh;">
             <div class="modal-header">
                 <h5 class="modal-title" id="resultDetailModalLabel">
                     <i class="fas fa-chart-bar me-2"></i>匹配结果详情
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body">
-                <div class="row">
+            <div class="modal-body" style="overflow-y: auto; flex: 1;">
+                <div class="row h-100">
                     <!-- 左侧匹配指标 -->
-                    <div class="col-md-4">
+                    <div class="col-md-4" id="metrics-panel">
                         <div class="card">
                             <div class="card-header">
                                 <h6 class="mb-0">匹配指标</h6>
@@ -69,32 +69,107 @@
                                 </div>
                             </div>
                         </div>
+                        
+                        <!-- 操作指南 -->
+                        <div class="card mt-3">
+                            <div class="card-header">
+                                <h6 class="mb-0">
+                                    <i class="fas fa-info-circle me-2"></i>操作指南
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="guide-section mb-3">
+                                    <h6 class="text-primary mb-2">
+                                        <i class="fas fa-mouse me-1"></i>鼠标操作
+                                    </h6>
+                                    <ul class="list-unstyled small mb-0">
+                                        <li class="mb-2">
+                                            <i class="fas fa-hand-pointer text-info me-2"></i>
+                                            <strong>左键拖拽：</strong>旋转视图
+                                        </li>
+                                        <li class="mb-2">
+                                            <i class="fas fa-hand-rock text-warning me-2"></i>
+                                            <strong>右键拖拽：</strong>平移视图
+                                        </li>
+                                        <li class="mb-2">
+                                            <i class="fas fa-arrows-alt-v text-success me-2"></i>
+                                            <strong>滚轮：</strong>缩放视图
+                                        </li>
+                                    </ul>
+                                </div>
+                                
+                                <div class="guide-section mb-3">
+                                    <h6 class="text-primary mb-2">
+                                        <i class="fas fa-tools me-1"></i>功能按钮
+                                    </h6>
+                                    <ul class="list-unstyled small mb-0">
+                                        <li class="mb-2">
+                                            <i class="fas fa-expand text-primary me-2"></i>
+                                            <strong>全屏：</strong>全屏查看模型
+                                        </li>
+                                        <li class="mb-2">
+                                            <i class="fas fa-camera text-success me-2"></i>
+                                            <strong>截图：</strong>保存当前视图
+                                        </li>
+                                    </ul>
+                                </div>
+                                
+                                <div class="guide-section">
+                                    <h6 class="text-primary mb-2">
+                                        <i class="fas fa-palette me-1"></i>颜色说明
+                                    </h6>
+                                    <ul class="list-unstyled small mb-0">
+                                        <li class="mb-2">
+                                            <span class="badge bg-secondary me-2">灰色</span>
+                                            鞋模（不透明）
+                                        </li>
+                                        <li class="mb-2">
+                                            <span class="badge me-2" style="background-color: #4080FF;">蓝色</span>
+                                            粗胚（半透明）
+                                        </li>
+                                    </ul>
+                                </div>
+                                
+                                <div class="alert alert-info mb-0 mt-3 py-2 px-3" style="font-size: 0.85rem;">
+                                    <i class="fas fa-lightbulb me-1"></i>
+                                    <strong>提示：</strong>透明叠加可以清晰看到模型的匹配关系
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     
-                    <!-- 右侧3D热图预览 -->
-                    <div class="col-md-8">
+                    <!-- 右侧3D预览 -->
+                    <div class="col-md-8" id="preview-panel">
                         <div class="card">
                             <div class="card-header d-flex justify-content-between align-items-center">
-                                <h6 class="mb-0">间隙热图</h6>
+                                <h6 class="mb-0">
+                                    <i class="fas fa-cube me-2"></i>3D预览
+                                    <small class="text-muted ms-2">透明叠加视图</small>
+                                </h6>
                                 <div>
-                                    <button class="btn btn-sm btn-outline-primary" id="fullscreen-heatmap">
+                                    <button class="btn btn-sm btn-outline-primary" id="fullscreen-heatmap" title="全屏">
                                         <i class="fas fa-expand"></i>
                                     </button>
-                                    <button class="btn btn-sm btn-outline-success" id="download-heatmap">
-                                        <i class="fas fa-download"></i>
+                                    <button class="btn btn-sm btn-outline-success" id="download-heatmap" title="截图">
+                                        <i class="fas fa-camera"></i>
                                     </button>
                                 </div>
                             </div>
                             <div class="card-body p-0">
-                                <div id="heatmap-preview" style="height: 500px;">
+                                <div id="heatmap-preview" style="height: 70vh; min-height: 500px;">
                                     <div class="d-flex align-items-center justify-content-center h-100">
                                         <div class="text-center">
                                             <i class="fas fa-spinner fa-spin fa-2x text-muted mb-2"></i>
-                                            <p class="text-muted">正在生成热图...</p>
+                                            <p class="text-muted">正在加载3D预览...</p>
                                         </div>
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                        
+                        <!-- 双模型热力图控制面板 -->
+                        <div id="heatmap-controls" style="display: none;">
+                            <!-- 控制面板内容将通过JavaScript动态生成 -->
                         </div>
                     </div>
                 </div>

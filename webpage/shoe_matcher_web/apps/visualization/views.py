@@ -132,121 +132,14 @@ def preview_3d_api(request, model_id):
 
 @api_view(['GET'])
 def heatmap_api(request, task_id, result_index):
-    """获取匹配热图API"""
-    try:
-        from apps.matching.models import MatchingTask
-        task = get_object_or_404(MatchingTask, task_id=task_id)
-        
-        if task.status != 'completed':
-            return Response({
-                'success': False,
-                'error': 'task_not_completed',
-                'message': '任务尚未完成'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # 检查结果索引
-        results = task.result_data.get('results', [])
-        if result_index >= len(results):
-            return Response({
-                'success': False,
-                'error': 'invalid_index',
-                'message': '无效的结果索引'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # 检查热力图生成状态
-        if task.heatmap_status == 'not_started':
-            # 触发热力图生成
-            from apps.matching.heatmap_tasks import generate_heatmaps_task
-            generate_heatmaps_task.delay(task.task_id, top_k=4)
-            return Response({
-                'success': False,
-                'error': 'heatmap_generating',
-                'message': '热力图正在生成中，请稍后重试'
-            }, status=status.HTTP_202_ACCEPTED)
-        
-        elif task.heatmap_status == 'generating':
-            return Response({
-                'success': False,
-                'error': 'heatmap_generating',
-                'message': '热力图正在生成中，请稍候'
-            }, status=status.HTTP_202_ACCEPTED)
-        
-        elif task.heatmap_status == 'failed':
-            return Response({
-                'success': False,
-                'error': 'heatmap_failed',
-                'message': '热力图生成失败'
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
-        # 检查热图文件
-        if not task.heatmap_dir and task.heatmap_status == 'completed':
-            # 尝试从heatmap_data中获取路径
-            heatmap_data = task.heatmap_data or {}
-            heatmaps = heatmap_data.get('heatmaps', [])
-            if result_index < len(heatmaps):
-                heatmap_info = heatmaps[result_index]
-                heatmap_path = Path(settings.MEDIA_ROOT) / heatmap_info.get('path', '')
-                if heatmap_path.exists():
-                    with open(heatmap_path, 'r', encoding='utf-8') as f:
-                        html_content = f.read()
-                    return Response({
-                        'success': True,
-                        'data': {
-                            'html': html_content,
-                            'result_info': results[result_index] if result_index < len(results) else {},
-                            'file_path': str(heatmap_path)
-                        }
-                    })
-        
-        if not task.heatmap_dir:
-            return Response({
-                'success': False,
-                'error': 'heatmap_not_found',
-                'message': '热图文件不存在'
-            }, status=status.HTTP_404_NOT_FOUND)
-        
-        # 查找对应的热图文件
-        heatmap_dir = Path(task.heatmap_dir)
-        result = results[result_index]
-        blank_name = Path(result['blank_path']).stem
-        
-        # 可能的热图文件名格式
-        possible_names = [
-            f"{result_index+1:02d}_{blank_name}_heatmap.html",
-            f"{blank_name}_heatmap.html",
-            f"heatmap_{result_index}.html"
-        ]
-        
-        heatmap_file = None
-        for name in possible_names:
-            potential_file = heatmap_dir / name
-            if potential_file.exists():
-                heatmap_file = potential_file
-                break
-        
-        if not heatmap_file:
-            return Response({
-                'success': False,
-                'error': 'heatmap_file_not_found',
-                'message': '热图文件未找到'
-            }, status=status.HTTP_404_NOT_FOUND)
-        
-        # 读取热图HTML
-        with open(heatmap_file, 'r', encoding='utf-8') as f:
-            html_content = f.read()
-        
-        return Response({
-            'success': True,
-            'data': {
-                'html': html_content,
-                'result_info': result,
-                'file_path': str(heatmap_file)
-            }
-        })
-        
-    except Exception as e:
-        return Response({
-            'success': False,
-            'error': 'heatmap_error',
-            'message': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    """
+    获取匹配热图API（已弃用）
+    
+    此功能已被透明叠加视图取代。
+    请使用前端 TransparentOverlayViewer 和 AlignmentRestorer 来查看匹配结果的3D预览。
+    """
+    return Response({
+        'success': False,
+        'error': 'deprecated',
+        'message': '热力图功能已被透明叠加视图取代，请使用前端 TransparentOverlayViewer 查看匹配结果'
+    }, status=status.HTTP_410_GONE)

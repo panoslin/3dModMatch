@@ -127,6 +127,17 @@ class MatchingApp {
         // 设置拖拽上传区域
         this.setupDragAndDrop();
         
+        // ==================== 3D预览控制事件 ====================
+        // 全屏热力图按钮 - 切换全屏显示
+        $(document).off('click', '#fullscreen-heatmap').on('click', '#fullscreen-heatmap', () => {
+            this.toggleHeatmapFullscreen();
+        });
+        
+        // 截图按钮 - 保存当前3D视图
+        $(document).off('click', '#download-heatmap').on('click', '#download-heatmap', () => {
+            this.downloadHeatmapScreenshot();
+        });
+        
         // ==================== 跨页面通信事件 ====================
         // 监听分类变化事件，当分类管理页面有变化时自动刷新主页面的分类选择
         $(document).off('categoryChanged.mainPage').on('categoryChanged.mainPage', () => {
@@ -776,15 +787,15 @@ class MatchingApp {
                 // 使用原算法计算的实际覆盖率
                 coverageRate = result.inside_ratio * 100;
             } else if (result.p15_clearance !== undefined) {
-                // 仅在没有inside_ratio时才使用估算
-                if (result.p15_clearance <= 2.0) {
-                    coverageRate = 95 - (result.p15_clearance * 10);
-                } else if (result.p15_clearance <= 5.0) {
-                    coverageRate = 75 - ((result.p15_clearance - 2) * 10);
-                } else {
-                    coverageRate = Math.max(0, 45 - ((result.p15_clearance - 5) * 2));
-                }
-                coverageRate = Math.max(0, Math.min(100, coverageRate));
+                // // 仅在没有inside_ratio时才使用估算
+                // if (result.p15_clearance <= 2.0) {
+                //     coverageRate = 95 - (result.p15_clearance * 10);
+                // } else if (result.p15_clearance <= 5.0) {
+                //     coverageRate = 75 - ((result.p15_clearance - 2) * 10);
+                // } else {
+                //     coverageRate = Math.max(0, 45 - ((result.p15_clearance - 5) * 2));
+                // }
+                coverageRate = 0;
             }
             
             const row = $(`
@@ -855,12 +866,12 @@ class MatchingApp {
         // 显示Modal
         $('#resultDetailModal').modal('show');
         
-        // 加载热力图
-        if (this.currentTask && index < 4) {  // 只有前4个结果有热力图
+        // 加载3D预览（透明叠加视图）- 支持所有结果
+        if (this.currentTask) {
             // 确保传递的是 task_id 字符串，而不是整个对象
             const taskId = typeof this.currentTask === 'string' ? this.currentTask : this.currentTask.task_id;
             if (taskId) {
-                this.loadHeatmapWithStatus(taskId, index);
+                this.loadTransparentOverlay(taskId, index);
             }
         }
     }
@@ -897,10 +908,7 @@ class MatchingApp {
         $('#overall-status').removeClass().addClass(`badge fs-6 p-2 ${overallStatus.class}`)
                            .html(`<i class="fas ${overallStatus.icon} me-1"></i>${overallStatus.text}`);
         
-        // 如果有热图，加载热图
-        if (this.currentTask && this.currentTask.task_id) {
-            this.loadHeatmap(this.currentTask.task_id, this.currentResults.indexOf(result));
-        }
+        // 注意：3D预览在 showResultDetail 方法中调用 loadTransparentOverlay 加载
     }
     
     getOverallStatus(result) {
@@ -932,12 +940,70 @@ class MatchingApp {
     }
     
     /**
-     * 加载热力图并检查生成状态
+     * 加载透明叠加3D预览
+     * 
+     * 加载鞋模和粗胚的透明叠加视图，支持所有匹配结果
+     * 
+     * @param {string} taskId - 任务ID
+     * @param {number} resultIndex - 结果索引
+     */
+    async loadTransparentOverlay(taskId, resultIndex) {
+        try {
+            // ==================== 清空并准备容器 ====================
+            const container = document.getElementById('heatmap-preview');
+            container.innerHTML = '';
+            
+            // 清空容器后，重置 viewer 引用（因为 DOM 元素已被移除）
+            this.transparentViewer = null;
+            
+            // ==================== 创建 Three.js 查看器 ====================
+            // 每次都重新创建 viewer，确保 DOM 元素正确关联
+            const viewer = new ThreeModelViewer(container, {
+                antialias: true,
+                alpha: true
+            });
+            this.transparentViewer = viewer;
+            
+            // ==================== 创建透明叠加查看器 ====================
+            const overlayViewer = new TransparentOverlayViewer(viewer, {
+                targetColor: 0x808080,      // 灰色鞋模
+                candidateColor: 0x4080FF,   // 蓝色粗胚
+                candidateOpacity: 0.5        // 半透明
+            });
+            
+            // ==================== 加载透明叠加视图 ====================
+            await overlayViewer.loadTransparentOverlay(taskId, resultIndex);
+            
+            console.log(`透明叠加视图加载完成: ${taskId}/${resultIndex}`);
+            
+        } catch (error) {
+            console.error('加载透明叠加视图失败:', error);
+            
+            // ==================== 显示错误信息 ====================
+            $('#heatmap-preview').html(`
+                <div class="d-flex align-items-center justify-content-center h-100">
+                    <div class="text-center text-danger">
+                        <i class="fas fa-exclamation-triangle fa-3x mb-3"></i>
+                        <h5>加载失败</h5>
+                        <p>${error.message || '无法加载3D预览'}</p>
+                        <button class="btn btn-sm btn-outline-primary mt-2" 
+                                onclick="matchingApp.loadTransparentOverlay('${taskId}', ${resultIndex})">
+                            <i class="fas fa-redo me-1"></i>重试
+                        </button>
+                    </div>
+                </div>
+            `);
+        }
+    }
+    
+    /**
+     * 加载热力图并检查生成状态（已弃用，保留用于向后兼容）
      * 
      * 检查热力图的生成状态，如果正在生成则显示进度，如果已完成则加载热力图
      * 
      * @param {string} taskId - 任务ID
      * @param {number} resultIndex - 结果索引
+     * @deprecated 使用 loadTransparentOverlay 替代
      */
     async loadHeatmapWithStatus(taskId, resultIndex) {
         try {
@@ -3958,6 +4024,144 @@ class MatchingApp {
             document.exitFullscreen().then(() => {
                 $('#fullscreen-preview').html('<i class="fas fa-expand"></i> 全屏');
             });
+        }
+    }
+    
+    /**
+     * 切换热力图预览全屏模式
+     */
+    toggleHeatmapFullscreen() {
+        const modal = document.getElementById('resultDetailModal');
+        const button = document.getElementById('fullscreen-heatmap');
+        const metricsPanel = document.getElementById('metrics-panel');
+        const previewPanel = document.getElementById('preview-panel');
+        const modalHeader = modal.querySelector('.modal-header');
+        const modalFooter = modal.querySelector('.modal-footer');
+        
+        if (!document.fullscreenElement) {
+            // 进入全屏
+            modal.requestFullscreen().then(() => {
+                button.innerHTML = '<i class="fas fa-compress"></i>';
+                button.title = '退出全屏';
+                console.log('已进入全屏模式');
+                
+                // 隐藏左侧指标面板，让3D预览居中
+                if (metricsPanel) metricsPanel.style.display = 'none';
+                
+                // 让预览面板占满整个宽度
+                if (previewPanel) {
+                    previewPanel.classList.remove('col-md-8');
+                    previewPanel.classList.add('col-12');
+                }
+                
+                // 隐藏模态框的头部和底部，只显示3D预览
+                if (modalHeader) modalHeader.style.display = 'none';
+                if (modalFooter) modalFooter.style.display = 'none';
+                
+                // 通知 Three.js viewer 调整大小
+                if (this.transparentViewer && this.transparentViewer.renderer) {
+                    setTimeout(() => {
+                        const container = document.getElementById('heatmap-preview');
+                        this.transparentViewer.renderer.setSize(
+                            container.clientWidth,
+                            container.clientHeight
+                        );
+                        if (this.transparentViewer.camera) {
+                            this.transparentViewer.camera.aspect = container.clientWidth / container.clientHeight;
+                            this.transparentViewer.camera.updateProjectionMatrix();
+                        }
+                        this.transparentViewer.renderer.render(
+                            this.transparentViewer.scene,
+                            this.transparentViewer.camera
+                        );
+                    }, 100);
+                }
+            }).catch(err => {
+                console.error('全屏模式失败:', err);
+                Utils.showNotification('全屏模式失败: ' + err.message, 'error');
+            });
+        } else {
+            // 退出全屏
+            document.exitFullscreen().then(() => {
+                button.innerHTML = '<i class="fas fa-expand"></i>';
+                button.title = '全屏';
+                console.log('已退出全屏模式');
+                
+                // 恢复左侧指标面板
+                if (metricsPanel) metricsPanel.style.display = '';
+                
+                // 恢复预览面板的原始宽度
+                if (previewPanel) {
+                    previewPanel.classList.remove('col-12');
+                    previewPanel.classList.add('col-md-8');
+                }
+                
+                // 恢复模态框的头部和底部
+                if (modalHeader) modalHeader.style.display = '';
+                if (modalFooter) modalFooter.style.display = '';
+                
+                // 恢复正常大小
+                setTimeout(() => {
+                    if (this.transparentViewer && this.transparentViewer.renderer) {
+                        const container = document.getElementById('heatmap-preview');
+                        this.transparentViewer.renderer.setSize(
+                            container.clientWidth,
+                            container.clientHeight
+                        );
+                        if (this.transparentViewer.camera) {
+                            this.transparentViewer.camera.aspect = container.clientWidth / container.clientHeight;
+                            this.transparentViewer.camera.updateProjectionMatrix();
+                        }
+                        this.transparentViewer.renderer.render(
+                            this.transparentViewer.scene,
+                            this.transparentViewer.camera
+                        );
+                    }
+                }, 100);
+            });
+        }
+    }
+    
+    /**
+     * 下载热力图截图
+     */
+    downloadHeatmapScreenshot() {
+        if (!this.transparentViewer || !this.transparentViewer.renderer) {
+            Utils.showNotification('请先加载3D预览', 'warning');
+            return;
+        }
+        
+        try {
+            // 渲染当前场景
+            this.transparentViewer.renderer.render(
+                this.transparentViewer.scene,
+                this.transparentViewer.camera
+            );
+            
+            // 获取canvas并转换为图片
+            const canvas = this.transparentViewer.renderer.domElement;
+            canvas.toBlob((blob) => {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                
+                // 生成文件名
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+                const taskId = this.currentTask ? this.currentTask.task_id : 'unknown';
+                link.download = `3d_preview_${taskId}_${timestamp}.png`;
+                
+                // 触发下载
+                link.click();
+                
+                // 清理URL对象
+                URL.revokeObjectURL(url);
+                
+                Utils.showNotification('截图已保存', 'success');
+                console.log('截图已保存:', link.download);
+            }, 'image/png');
+        } catch (error) {
+            console.error('截图失败:', error);
+            Utils.showNotification('截图失败: ' + error.message, 'error');
         }
     }
     

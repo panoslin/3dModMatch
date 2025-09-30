@@ -65,9 +65,10 @@ RUN ln -sf /usr/lib/x86_64-linux-gnu/libtbb.so.12 /usr/lib/x86_64-linux-gnu/libt
     && echo "/usr/local/lib" >> /etc/ld.so.conf.d/local.conf \
     && ldconfig
 
-# 复制Django项目
+# 复制Django项目和必要的Python模块
 COPY shoe_matcher_web/ /app/
 COPY entrypoint.sh /app/
+COPY hybrid_matcher.py /app/
 
 # 创建必要目录
 RUN mkdir -p /app/media/{shoes,blanks,heatmaps,temp,converted} \
