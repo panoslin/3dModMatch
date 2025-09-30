@@ -411,7 +411,7 @@ if __name__ == '__main__':
     
     # 设置进程数
     if args.processes is None:
-        args.processes = cpu_count() * 2
+        args.processes = cpu_count()
     
     run_multiprocess_matcher(
         args.target,
