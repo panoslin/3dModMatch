@@ -156,12 +156,21 @@
                 <!-- 结果列表 -->
                 <div id="results-container" class="d-none">
                     <div class="mb-3">
-                        <div class="row">
+                        <div class="row align-items-center mb-2">
                             <div class="col-md-8">
                                 <h6 class="mb-0">匹配结果 <span class="badge bg-primary" id="results-count">0</span></h6>
                             </div>
                             <div class="col-md-4 text-end">
                                 <small class="text-muted">处理时间: <span id="processing-time">--</span>秒</small>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-12">
+                                <div class="alert alert-info py-2 px-3 mb-0 d-flex align-items-center" style="background-color: #e7f3ff; border-color: #b3d9ff;">
+                                    <i class="fas fa-shoe-prints me-2" style="color: #0066cc;"></i>
+                                    <span class="me-2" style="color: #555;">鞋模:</span>
+                                    <strong id="current-shoe-name" style="color: #0066cc;">--</strong>
+                                </div>
                             </div>
                         </div>
                     </div>

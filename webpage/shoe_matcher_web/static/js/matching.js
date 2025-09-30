@@ -376,6 +376,10 @@ class MatchingApp {
             if (response.success) {
                 // 保存任务信息并开始状态轮询
                 this.currentTask = response.data;
+                // 确保包含鞋模名称
+                if (!this.currentTask.shoe_model_name && this.currentShoeModel) {
+                    this.currentTask.shoe_model_name = this.currentShoeModel.name;
+                }
                 this.matchingStartTime = Date.now(); // 记录开始时间，用于进度估算
                 this.startPolling(this.currentTask);
                 Utils.showNotification('匹配任务已开始', 'success');
@@ -654,7 +658,8 @@ class MatchingApp {
                 // 设置当前任务信息
                 this.currentTask = {
                     task_id: taskId,
-                    status: response.data.status
+                    status: response.data.status,
+                    shoe_model_name: response.data.shoe_model_name || '未知鞋模'
                 };
                 
                 // 设置鞋模信息
@@ -705,6 +710,17 @@ class MatchingApp {
         // 更新结果数量和处理时间
         $('#results-count').text(data.results.length);
         $('#processing-time').text(data.summary.processing_time ? data.summary.processing_time.toFixed(2) : '--');
+        
+        // 更新鞋模名称显示
+        if (this.currentTask && this.currentTask.shoe_model_name) {
+            $('#current-shoe-name').text(this.currentTask.shoe_model_name);
+        } else if (this.currentShoeModel && this.currentShoeModel.name) {
+            $('#current-shoe-name').text(this.currentShoeModel.name);
+        } else if (data.shoe_model_name) {
+            $('#current-shoe-name').text(data.shoe_model_name);
+        } else {
+            $('#current-shoe-name').text('未知鞋模');
+        }
         
         // ==================== 渲染结果表格 ====================
         // 渲染结果表格
@@ -877,6 +893,29 @@ class MatchingApp {
     }
     
     updateResultDetailModal(result) {
+        // 更新模型信息
+        // 鞋模名称从当前任务获取
+        if (this.currentTask && this.currentTask.shoe_model_name) {
+            $('#model-shoe-name').text(this.currentTask.shoe_model_name);
+        } else {
+            $('#model-shoe-name').text('未知鞋模');
+        }
+        
+        // 粗胚名称从结果数据获取
+        if (result.blank_name) {
+            // 提取文件名（移除路径和可能的后缀）
+            let blankName = result.blank_name;
+            // 如果包含路径分隔符，只取文件名部分
+            if (blankName.includes('/')) {
+                blankName = blankName.split('/').pop();
+            }
+            // 移除可能的 _converted 后缀和文件扩展名的重复部分
+            blankName = blankName.replace(/_converted_\w+\.3dm$/, '.3dm');
+            $('#model-blank-name').text(blankName);
+        } else {
+            $('#model-blank-name').text('未知粗胚');
+        }
+        
         // 使用实际的覆盖率，如果没有则基于P15间隙估算
         let coverageRate = 0;
         if (result.inside_ratio !== undefined && result.inside_ratio !== null) {

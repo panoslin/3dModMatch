@@ -271,6 +271,7 @@ class AlignmentRestorer {
 
     /**
      * 应用精确变换
+     * 注意：渲染时忽略缩放，只应用刚体变换（旋转+平移）
      */
     applyExactTransformation() {
         if (!this.candidateModel || !this.alignmentData.transform_matrix) {
@@ -279,52 +280,93 @@ class AlignmentRestorer {
         }
 
         try {
-            // 重置到原始状态
-            this.candidateModel.matrix.copy(this.originalCandidateMatrix);
+            console.log('🔧 开始应用变换（不含缩放）:', {
+                mirrored: this.alignmentData.mirrored,
+                hasTransformMatrix: !!this.alignmentData.transform_matrix
+            });
             
-            // 解析变换矩阵
+            // 重置到原始状态
+            this.candidateModel.matrix.identity();
+            this.candidateModel.position.set(0, 0, 0);
+            this.candidateModel.rotation.set(0, 0, 0);
+            this.candidateModel.scale.set(1, 1, 1);
+            this.candidateModel.updateMatrix();
+            
+            // 解析变换矩阵（包含旋转和平移）
             const transformMatrix = this.parseTransformMatrix(
                 this.alignmentData.transform_matrix
             );
 
-            console.log('应用变换矩阵:', transformMatrix.elements.slice(0, 8));
+            console.log('🔄 应用变换矩阵:', {
+                determinant: transformMatrix.determinant().toFixed(4)
+            });
             
             // 如果需要镜像处理
             if (this.alignmentData.mirrored) {
-                console.log('应用镜像变换');
+                console.log('🪞 应用镜像变换 (YZ平面)');
                 const mirrorMatrix = this.createMirrorMatrix('YZ');
                 transformMatrix.premultiply(mirrorMatrix);
             }
             
-            // 应用变换
+            // 应用变换矩阵（只包含旋转和平移，不包含缩放）
             this.candidateModel.applyMatrix4(transformMatrix);
             this.candidateModel.updateMatrixWorld(true);
             
-            console.log('变换应用完成');
+            // 验证变换结果
+            const finalBbox = new THREE.Box3().setFromObject(this.candidateModel);
+            const finalCenter = finalBbox.getCenter(new THREE.Vector3());
+            
+            console.log('✅ 变换应用完成:', {
+                finalCenter: {
+                    x: finalCenter.x.toFixed(2),
+                    y: finalCenter.y.toFixed(2),
+                    z: finalCenter.z.toFixed(2)
+                }
+            });
             
         } catch (error) {
-            console.error('应用变换失败:', error);
+            console.error('❌ 应用变换失败:', error);
             throw error;
         }
     }
 
     /**
      * 解析变换矩阵
+     * 重要：后端使用 row-major (行主序)，Three.js 使用 column-major (列主序)
+     * 后端计算: V @ T.T (转置后应用)
+     * 因此前端需要转置矩阵以保持一致
      */
     parseTransformMatrix(matrixArray) {
         const matrix = new THREE.Matrix4();
         
         if (Array.isArray(matrixArray)) {
             if (matrixArray.length === 16) {
-                // 4x4矩阵扁平化数组
+                // 4x4矩阵扁平化数组 (row-major from NumPy)
+                // Three.js fromArray 期望 column-major，所以需要转置
                 matrix.fromArray(matrixArray);
+                matrix.transpose(); // 关键：转置矩阵以匹配后端
+                
             } else if (matrixArray.length === 4 && Array.isArray(matrixArray[0])) {
-                // 4x4二维数组
-                const flatArray = matrixArray.flat();
-                matrix.fromArray(flatArray);
+                // 4x4二维数组 [[row0], [row1], [row2], [row3]]
+                // 需要转置为 column-major
+                const transposed = [
+                    matrixArray[0][0], matrixArray[1][0], matrixArray[2][0], matrixArray[3][0],
+                    matrixArray[0][1], matrixArray[1][1], matrixArray[2][1], matrixArray[3][1],
+                    matrixArray[0][2], matrixArray[1][2], matrixArray[2][2], matrixArray[3][2],
+                    matrixArray[0][3], matrixArray[1][3], matrixArray[2][3], matrixArray[3][3]
+                ];
+                matrix.fromArray(transposed);
+                
             } else {
                 throw new Error(`不支持的矩阵格式: ${matrixArray.length}`);
             }
+            
+            console.log('🔢 矩阵解析:', {
+                input_format: matrixArray.length === 16 ? 'flat_array' : '2d_array',
+                transposed: true,
+                determinant: matrix.determinant().toFixed(4)
+            });
+            
         } else {
             throw new Error('变换矩阵必须是数组格式');
         }
