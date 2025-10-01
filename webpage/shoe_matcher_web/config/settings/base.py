@@ -149,6 +149,37 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 
+# Celery队列配置 - 专用队列用于资源密集型任务
+CELERY_TASK_ROUTES = {
+    # 匹配任务使用专用队列（高资源消耗）
+    'apps.matching.tasks.run_matching_task': {'queue': 'matching'},
+    # 'apps.matching.tasks.generate_heatmaps_task': {'queue': 'matching'},
+    # 其他任务使用默认队列
+    'apps.shoes.tasks.*': {'queue': 'default'},
+    'apps.blanks.tasks.*': {'queue': 'default'},
+    'apps.utils.lod_processing_tasks.*': {'queue': 'default'},
+}
+
+# 队列优先级配置
+CELERY_TASK_QUEUES = {
+    'matching': {
+        'exchange': 'matching',
+        'routing_key': 'matching',
+    },
+    'default': {
+        'exchange': 'default',
+        'routing_key': 'default',
+    },
+}
+
+# Worker并发配置（通过环境变量控制）
+CELERY_WORKER_CONCURRENCY = int(os.environ.get('CELERY_CONCURRENCY', '4'))
+CELERY_MATCHING_WORKER_CONCURRENCY = int(os.environ.get('CELERY_MATCHING_CONCURRENCY', '1'))
+
+# 任务超时配置
+CELERY_TASK_TIME_LIMIT = int(os.environ.get('CELERY_TASK_TIME_LIMIT', '3600'))  # 1小时
+CELERY_TASK_SOFT_TIME_LIMIT = int(os.environ.get('CELERY_TASK_SOFT_TIME_LIMIT', '3300'))  # 55分钟
+
 # Matching service settings
 MATCHER_DOCKER_IMAGE = os.environ.get('MATCHER_DOCKER_IMAGE', 'hybrid-shoe-matcher:latest')
 DEFAULT_CLEARANCE = float(os.environ.get('DEFAULT_CLEARANCE', '2.0'))

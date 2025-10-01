@@ -154,7 +154,65 @@ def process_model_lod(self, model_id: int, model_type: str = 'shoe', force_regen
         if not model.file or not os.path.exists(model.file.path):
             raise FileNotFoundError(f"模型文件不存在: {model.file}")
         
-        file_size = os.path.getsize(model.file.path)
+        # 3.5. 检查文件格式并执行STL转3DM转换（如果需要）
+        file_path = model.file.path
+        file_ext = os.path.splitext(file_path)[1].lower()
+        
+        if file_ext == '.stl':
+            logger.info(f"检测到STL文件，需要转换为3DM: {file_path}")
+            try:
+                from utils.file_conversion_service import FileConversionService
+                
+                # 打开文件进行转换
+                with open(file_path, 'rb') as f:
+                    from django.core.files.uploadedfile import InMemoryUploadedFile
+                    import io
+                    
+                    # 读取文件内容
+                    content = f.read()
+                    file_obj = InMemoryUploadedFile(
+                        io.BytesIO(content),
+                        None,
+                        os.path.basename(file_path),
+                        'application/octet-stream',
+                        len(content),
+                        None
+                    )
+                    
+                    # 执行转换
+                    conversion_result = FileConversionService.convert_if_needed(file_obj)
+                    
+                    if not conversion_result['success']:
+                        raise ValueError(f"STL转换失败: {conversion_result.get('error', '未知错误')}")
+                    
+                    # 保存转换后的3DM文件
+                    converted_file = conversion_result['converted_file']
+                    
+                    # 确定保存路径
+                    original_dir = os.path.dirname(file_path)
+                    base_name = os.path.splitext(os.path.basename(file_path))[0]
+                    converted_filename = f"{base_name}_converted.3dm"
+                    converted_path = os.path.join(original_dir, converted_filename)
+                    
+                    # 保存到文件系统
+                    with open(converted_path, 'wb') as out_f:
+                        out_f.write(converted_file.read())
+                    
+                    # 更新模型的文件路径指向转换后的3DM文件
+                    # 保存相对路径到数据库
+                    from django.conf import settings
+                    relative_path = os.path.relpath(converted_path, settings.MEDIA_ROOT)
+                    model.file.name = relative_path
+                    model.save(update_fields=['file'])
+                    
+                    logger.info(f"STL转换成功: {converted_path}")
+                    file_path = converted_path  # 更新处理路径
+                    
+            except Exception as conv_error:
+                logger.error(f"STL转换失败: {conv_error}", exc_info=True)
+                raise ValueError(f"STL文件转换失败: {str(conv_error)}")
+        
+        file_size = os.path.getsize(file_path)
         if file_size > LODConfig.MAX_INPUT_SIZE:
             raise ValueError(f"文件过大: {file_size / 1024 / 1024:.1f}MB > {LODConfig.MAX_INPUT_SIZE / 1024 / 1024}MB")
         

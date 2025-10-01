@@ -523,9 +523,12 @@ def get_lod_data_api(request, model_type: str, model_id: int):
     try:
         logger.info(f"获取LOD数据: {model_type}/{model_id}")
         
-        # 获取请求参数
-        lod_level = request.GET.get('lod', 'preview')
+        # 获取请求参数（支持 'lod' 和 'level' 两种参数名）
+        lod_level = request.GET.get('level', request.GET.get('lod', 'preview'))
         file_format = request.GET.get('format', 'glb')
+        engine = request.GET.get('engine', 'threejs')  # 支持 engine 参数
+        
+        logger.info(f"请求参数: level={lod_level}, format={file_format}, engine={engine}")
         
         # 验证文件格式
         if file_format not in ['glb', 'metadata']:
@@ -540,11 +543,73 @@ def get_lod_data_api(request, model_type: str, model_id: int):
         
         # 检查模型是否有LOD文件
         if not hasattr(model, 'lod_files') or not model.lod_files:
-            logger.warning(f"模型 {model_type}/{model_id} 没有LOD文件")
+            logger.warning(f"模型 {model_type}/{model_id} 没有LOD文件，尝试自动生成...")
+            
+            # 尝试实时生成LOD文件
+            try:
+                from utils.lod_processing_tasks import process_model_lod
+                from celery.exceptions import Retry
+                import time
+                
+                logger.info(f"开始为 {model_type}/{model_id} 生成LOD文件...")
+                start_time = time.time()
+                
+                # 异步调用LOD处理任务，立即返回任务ID
+                # 使用 apply_async 而不是直接调用，指定正确的队列名称
+                from utils.lod_processing_tasks import process_model_lod as lod_task
+                task = lod_task.apply_async(
+                    args=[model_id, model_type, False],
+                    queue='default'  # 使用 default 队列（与 worker 配置一致）
+                )
+                
+                # 等待任务完成（最多60秒）
+                try:
+                    result = task.get(timeout=60)
+                    elapsed_time = time.time() - start_time
+                    logger.info(f"LOD生成完成，耗时: {elapsed_time:.2f}秒")
+                    
+                    if result and result.get('success'):
+                        # 重新加载模型以获取更新后的LOD文件信息
+                        model.refresh_from_db()
+                        logger.info(f"LOD文件生成成功，级别: {list(model.lod_files.keys())}")
+                    else:
+                        logger.error(f"LOD文件生成失败: {result}")
+                        return JsonResponse({
+                            'success': False,
+                            'error': 'lod_generation_failed',
+                            'message': f'LOD文件生成失败: {result.get("error", "未知错误") if result else "任务返回空结果"}'
+                        }, status=500)
+                except Exception as wait_error:
+                    elapsed_time = time.time() - start_time
+                    logger.warning(f"等待LOD生成超时或失败 ({elapsed_time:.2f}秒): {wait_error}")
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'lod_generation_timeout',
+                        'message': f'LOD文件生成超时，请稍后刷新页面重试（任务仍在后台处理中）'
+                    }, status=202)  # 返回 202 Accepted 表示任务已接受但未完成
+                    
+            except Retry as retry_error:
+                logger.warning(f"LOD任务请求重试: {retry_error}")
+                return JsonResponse({
+                    'success': False,
+                    'error': 'lod_generation_retry',
+                    'message': 'LOD文件生成需要重试，请稍后刷新页面'
+                }, status=202)
+            except Exception as gen_error:
+                logger.error(f"LOD文件生成异常: {gen_error}", exc_info=True)
+                return JsonResponse({
+                    'success': False,
+                    'error': 'lod_generation_error',
+                    'message': f'LOD文件生成失败: {str(gen_error)}'
+                }, status=500)
+        
+        # 再次检查LOD文件是否存在（生成后）
+        if not hasattr(model, 'lod_files') or not model.lod_files:
+            logger.error(f"模型 {model_type}/{model_id} LOD文件生成后仍不可用")
             return JsonResponse({
                 'success': False,
                 'error': 'no_lod_files',
-                'message': 'LOD文件未生成，请先触发LOD处理'
+                'message': 'LOD文件生成失败，请稍后重试'
             }, status=404)
         
         # 检查指定LOD级别是否存在
