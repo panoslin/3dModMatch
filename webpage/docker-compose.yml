@@ -107,7 +107,7 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       # 匹配服务配置
-      - MATCHER_DOCKER_IMAGE=panoslin/shoe_matcher_hybrid:latest
+      - MATCHER_DOCKER_IMAGE=${MATCHER_DOCKER_IMAGE:-panoslin/shoe_matcher_hybrid:latest}
       - DEFAULT_CLEARANCE=${DEFAULT_CLEARANCE:-2.0}
       - MAX_CONCURRENT_TASKS=${MAX_CONCURRENT_TASKS:-3}
       - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE:-104857600}
@@ -159,7 +159,7 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       # 匹配服务配置
-      - MATCHER_DOCKER_IMAGE=panoslin/shoe_matcher_hybrid:latest
+      - MATCHER_DOCKER_IMAGE=${MATCHER_DOCKER_IMAGE:-panoslin/shoe_matcher_hybrid:latest}
     depends_on:
       db:
         condition: service_healthy
