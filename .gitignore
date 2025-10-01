@@ -45,6 +45,8 @@ logs/
 .env
 .env.*
 *.env
+!webpage/.env 
+
 *.secret
 secrets.json
 

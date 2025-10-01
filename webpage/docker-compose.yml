@@ -130,7 +130,7 @@ services:
     # 需要访问Docker守护进程
     user: root
 
-  # Celery异步任务处理
+  # Celery异步任务处理（默认队列 - 处理文件上传、LOD等轻量任务）
   celery:
     # build: .
     image: panoslin/3d-shoe-matcher-web:v1
@@ -158,6 +158,8 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # Celery Worker配置
+      - CELERY_CONCURRENCY=${CELERY_CONCURRENCY:-4}
       # 匹配服务配置
       - MATCHER_DOCKER_IMAGE=${MATCHER_DOCKER_IMAGE:-panoslin/shoe_matcher_hybrid:latest}
     depends_on:
@@ -182,6 +184,59 @@ services:
         reservations:
           cpus: '${CELERY_MIN_CPUS:-2}'
           memory: ${CELERY_MIN_MEMORY:-2G}
+
+  # Celery匹配任务专用Worker（matching队列 - 串行执行，确保同时只有1个匹配任务）
+  celery-matching:
+    # build: .
+    image: panoslin/3d-shoe-matcher-web:v1
+    container_name: shoe_matcher_celery_matching
+    command: ["celery-matching"]
+    volumes:
+      - ./shoe_matcher_web/media:/app/media
+      - ./logs:/app/logs
+      - ./results:/app/results
+      - ./temp:/app/temp
+      # Docker socket用于调用匹配容器（匹配任务需要）
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DEBUG=${DEBUG:-False}
+      - SECRET_KEY=${SECRET_KEY:-django-insecure-change-this}
+      - DJANGO_ENVIRONMENT=docker
+      # 数据库配置
+      - DB_ENGINE=django.db.backends.postgresql
+      - DB_NAME=${DB_NAME:-shoe_matcher}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres123}
+      - DB_HOST=db
+      - DB_PORT=5432
+      # Redis配置
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # Celery Matching Worker配置 - 关键：并发设为1，确保串行执行
+      - CELERY_MATCHING_CONCURRENCY=${CELERY_MATCHING_CONCURRENCY:-1}
+      # 匹配服务配置
+      - MATCHER_DOCKER_IMAGE=panoslin/shoe_matcher_hybrid:latest
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - shoe_matcher_network
+    user: root
+    deploy:
+      resources:
+        limits:
+          # 匹配任务资源限制 - 预留更多资源给匹配容器
+          cpus: '${CELERY_MATCHING_MAX_CPUS:-2}'
+          memory: ${CELERY_MATCHING_MAX_MEMORY:-2G}
+        reservations:
+          cpus: '${CELERY_MATCHING_MIN_CPUS:-1}'
+          memory: ${CELERY_MATCHING_MIN_MEMORY:-1G}
 
 volumes:
   postgres_data:

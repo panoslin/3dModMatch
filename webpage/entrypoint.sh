@@ -34,8 +34,23 @@ fi
 
 # 检查是否为Celery模式
 if [ "$1" = "celery" ]; then
-    echo "⚡ 启动Celery Worker..."
-    exec celery -A config worker -l info --concurrency=${CELERY_CONCURRENCY:-4} --max-tasks-per-child=100
+    echo "⚡ 启动Celery Worker (默认队列)..."
+    exec celery -A config worker -l info \
+        --queues=default \
+        --concurrency=${CELERY_CONCURRENCY:-4} \
+        --max-tasks-per-child=100 \
+        --hostname=worker_default@%h
+fi
+
+# 检查是否为Celery匹配任务专用Worker
+if [ "$1" = "celery-matching" ]; then
+    echo "🎯 启动Celery Matching Worker (专用队列 - 串行执行)..."
+    exec celery -A config worker -l info \
+        --queues=matching \
+        --concurrency=${CELERY_MATCHING_CONCURRENCY:-1} \
+        --max-tasks-per-child=10 \
+        --hostname=worker_matching@%h \
+        --prefetch-multiplier=1
 fi
 
 # 检查是否为Web模式

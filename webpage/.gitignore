@@ -33,6 +33,7 @@ db.sqlite3-journal
 .env.development
 .env.test
 .env.production
+!.env 
 
 # 媒体文件
 media/
