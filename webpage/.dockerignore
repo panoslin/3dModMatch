@@ -1,0 +1,195 @@
+# ===========================================
+# Docker构建忽略文件
+# 排除不需要的文件和目录以减小构建上下文
+# ===========================================
+
+# Git版本控制
+.git
+.gitignore
+.gitattributes
+.github
+
+# Python缓存和编译文件
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+.pytest_cache
+.coverage
+.tox
+.cache
+.mypy_cache
+
+# 虚拟环境
+venv/
+env/
+ENV/
+.venv/
+.env/
+virtualenv/
+
+# IDE和编辑器文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# 媒体文件目录（3D模型、图片等大文件）
+shoe_matcher_web/media/
+media/
+*/media/
+
+# 静态文件收集目录
+shoe_matcher_web/staticfiles/
+staticfiles/
+*/staticfiles/
+
+# 日志文件
+*.log
+logs/
+*/logs/
+shoe_matcher_web/logs/
+
+# 临时文件和缓存
+tmp/
+temp/
+*/tmp/
+*/temp/
+.tmp/
+.temp/
+
+# 处理结果文件
+results/
+*/results/
+shoe_matcher_web/results/
+
+# 数据库文件
+*.sqlite3
+*.db
+db.sqlite3
+
+# 配置文件（可能包含敏感信息）
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+
+# Node.js文件（如果有前端构建）
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+
+# 测试文件和覆盖率报告
+.coverage
+htmlcov/
+.nyc_output
+coverage/
+
+# 构建输出
+dist/
+build/
+*.tar.gz
+*.zip
+
+# 操作系统文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# 文档文件
+README.md
+*.md
+docs/
+documentation/
+
+# 开发工具配置
+.editorconfig
+.eslintrc*
+.prettierrc*
+jest.config.js
+webpack.config.js
+gulpfile.js
+Gruntfile.js
+
+# 备份文件
+*.bak
+*.backup
+*.old
+*.orig
+
+# 压缩文件
+*.tar
+*.tar.gz
+*.tar.bz2
+*.zip
+*.rar
+*.7z
+
+# 构建必需文件例外（必须在排除规则之后）
+!docker-extract.tar.gz
+!cppcore.cpython-310-x86_64-linux-gnu.so
+
+# 特定于项目的大文件
+# 3D模型文件
+*.3dm
+*.glb
+*.gltf
+*.obj
+*.stl
+*.ply
+
+# 图片文件（如果很大）
+# *.jpg
+# *.jpeg  
+# *.png
+# *.gif
+# *.bmp
+# *.tiff
+
+# 视频文件
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.flv
+
+# 音频文件
+*.mp3
+*.wav
+*.flac
+*.aac
+
+# Docker相关
+Dockerfile.dev
+docker-compose.override.yml
+docker-compose.dev.yml
+
+# 本地开发文件
+.local
+local_settings.py
+dev_settings.py
+
+# Celery相关
+celerybeat-schedule
+celerybeat.pid
+
+# 数据迁移备份（如果有）
+fixtures/
+dumps/
