@@ -41,6 +41,14 @@ class StartMatchingAPIView(generics.CreateAPIView):
                 id__in=serializer.validated_data['category_ids']
             )
             
+            # 预先计算候选数量（用于时间预估）
+            from apps.blanks.models import BlankModel
+            total_candidates = BlankModel.objects.filter(
+                categories__in=categories,
+                is_active=True,
+                is_processed=True
+            ).distinct().count()
+            
             task = MatchingTask.objects.create(
                 shoe_model=shoe_model,
                 clearance=serializer.validated_data['clearance'],
@@ -48,9 +56,19 @@ class StartMatchingAPIView(generics.CreateAPIView):
                 enable_scaling=serializer.validated_data['enable_scaling'],
                 enable_multi_start=serializer.validated_data['enable_multi_start'],
                 max_scale=serializer.validated_data['max_scale'],
+                total_candidates=total_candidates,
                 started_at=timezone.now()
             )
             task.selected_categories.set(categories)
+            
+            # 计算预估时间
+            # 公式: 总时长 = 45s × ((m + n - 1) / n)
+            # m = 候选数量, n = 并行进程数
+            from django.conf import settings
+            num_processes = settings.MAX_CONCURRENT_TASKS
+            batch_time = 45  # 每批处理时间（秒）
+            total_batches = (total_candidates + num_processes - 1) // num_processes
+            estimated_time = total_batches * batch_time
             
             # 启动异步匹配任务
             from .tasks import run_matching_task
@@ -61,7 +79,9 @@ class StartMatchingAPIView(generics.CreateAPIView):
                 'data': {
                     'task_id': task.task_id,
                     'status': task.status,
-                    'estimated_time': 120  # 预估2分钟
+                    'total_candidates': total_candidates,
+                    'num_processes': num_processes,
+                    'estimated_time': estimated_time  # 使用新算法预估
                 },
                 'message': '匹配任务已启动'
             }, status=status.HTTP_201_CREATED)
@@ -82,11 +102,32 @@ def matching_status_api(request, task_id):
         
         # 计算预估剩余时间
         estimated_remaining = None
+        estimated_total = None
         if task.status == 'processing' and task.started_at:
             elapsed = (timezone.now() - task.started_at).total_seconds()
-            if task.progress > 0:
+            
+            # 使用新算法计算预估时间
+            if task.total_candidates > 0:
+                # 从配置读取并行进程数
+                from django.conf import settings
+                num_processes = settings.MAX_CONCURRENT_TASKS
+                
+                # 每批处理时间（秒）
+                batch_time = 45
+                
+                # 总批次数 = ceil(m/n) = (m + n - 1) / n
+                total_batches = (task.total_candidates + num_processes - 1) // num_processes
+                
+                # 总预估时间 = 批次数 × 每批时间
+                estimated_total = total_batches * batch_time
+                
+                # 剩余时间 = 总时间 - 已用时间
+                estimated_remaining = max(0, int(estimated_total - elapsed))
+            elif task.progress > 0:
+                # 备用算法：基于进度百分比的线性预估
                 total_estimated = elapsed * 100 / task.progress
                 estimated_remaining = max(0, int(total_estimated - elapsed))
+                estimated_total = int(total_estimated)
         
         return Response({
             'success': True,
@@ -95,7 +136,9 @@ def matching_status_api(request, task_id):
                 'status': task.status,
                 'progress': task.progress,
                 'current_step': task.current_step,
-                'estimated_remaining': estimated_remaining
+                'estimated_remaining': estimated_remaining,
+                'estimated_total': estimated_total,
+                'total_candidates': task.total_candidates
             }
         })
         

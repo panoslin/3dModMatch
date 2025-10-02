@@ -80,6 +80,10 @@ class MatchingTask(BaseModel):
         blank=True,
         verbose_name="当前步骤"
     )
+    total_candidates = models.IntegerField(
+        default=0,
+        verbose_name="候选粗胚总数"
+    )
     
     # 结果数据
     result_data = models.JSONField(

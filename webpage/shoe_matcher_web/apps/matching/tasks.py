@@ -66,9 +66,13 @@ def run_matching_task(task_id):
         if not candidates.exists():
             raise ValueError("没有找到符合条件的粗胚文件")
         
+        # 记录候选数量（用于时间预估）
+        total_candidates = candidates.count()
+        task.total_candidates = total_candidates
+        
         # 更新任务进度，记录找到的候选数量
         task.progress = 10
-        task.current_step = f'找到 {candidates.count()} 个候选粗胚...'
+        task.current_step = f'找到 {total_candidates} 个候选粗胚...'
         task.save()
         
         # ==================== 第三步：创建临时工作目录 ====================
