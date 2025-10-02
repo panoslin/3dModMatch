@@ -412,19 +412,35 @@ py::dict clearance_sampling(py::array_t<double> v_tgt, py::array_t<int> f_tgt,
     }
     double inside_ratio = (double)inside_cnt / std::max<size_t>(1, sdv.size());
 
-    double min_c = 0, mean_c = 0, p01 = 0; bool pass = false;
+    double min_c = 0, mean_c = 0, p01 = 0, p05 = 0, p10 = 0, p15 = 0, p20 = 0, p50 = 0; 
+    bool pass = false;
     if (!inner.empty()) {
         std::sort(inner.begin(), inner.end());
         min_c = inner.front();  // Minimum clearance (smallest distance from target to candidate interior)
         mean_c = std::accumulate(inner.begin(), inner.end(), 0.0) / inner.size();
-        size_t k = (size_t)std::floor(0.01 * inner.size());
-        if (k >= inner.size()) k = inner.size() - 1;
-        p01 = inner[k];
+        
+        // 计算真实的百分位数
+        size_t n = inner.size();
+        auto percentile = [&](double p) -> double {
+            size_t k = (size_t)std::floor(p * n);
+            if (k >= n) k = n - 1;
+            return inner[k];
+        };
+        
+        p01 = percentile(0.01);
+        p05 = percentile(0.05);
+        p10 = percentile(0.10);
+        p15 = percentile(0.15);
+        p20 = percentile(0.20);
+        p50 = percentile(0.50);
+        
         // Pass only if ALL points are inside (inside_ratio == 1.0) AND minimum clearance is sufficient
         pass = (inside_ratio >= 0.999) && (min_c >= clearance);  // Allow 0.1% tolerance for numerical errors
     }
     return py::dict("pass"_a = pass, "min_clearance"_a = min_c, "mean_clearance"_a = mean_c,
-                    "p01_clearance"_a = p01, "inside_ratio"_a = inside_ratio);
+                    "p01_clearance"_a = p01, "p05_clearance"_a = p05, "p10_clearance"_a = p10,
+                    "p15_clearance"_a = p15, "p20_clearance"_a = p20, "p50_clearance"_a = p50,
+                    "inside_ratio"_a = inside_ratio);
 }
 
 // 基于顶点的间隙检查 - 不使用采样，直接使用所有顶点
@@ -464,19 +480,35 @@ py::dict clearance_vertex_based(py::array_t<double> v_tgt, py::array_t<int> f_tg
     }
     double inside_ratio = (double)inside_cnt / std::max<size_t>(1, sdv.size());
 
-    double min_c = 0, mean_c = 0, p01 = 0; bool pass = false;
+    double min_c = 0, mean_c = 0, p01 = 0, p05 = 0, p10 = 0, p15 = 0, p20 = 0, p50 = 0; 
+    bool pass = false;
     if (!inner.empty()) {
         std::sort(inner.begin(), inner.end());
         min_c = inner.front();  // Minimum clearance (smallest distance from target to candidate interior)
         mean_c = std::accumulate(inner.begin(), inner.end(), 0.0) / inner.size();
-        size_t k = (size_t)std::floor(0.01 * inner.size());
-        if (k >= inner.size()) k = inner.size() - 1;
-        p01 = inner[k];
+        
+        // 计算真实的百分位数
+        size_t n = inner.size();
+        auto percentile = [&](double p) -> double {
+            size_t k = (size_t)std::floor(p * n);
+            if (k >= n) k = n - 1;
+            return inner[k];
+        };
+        
+        p01 = percentile(0.01);
+        p05 = percentile(0.05);
+        p10 = percentile(0.10);
+        p15 = percentile(0.15);
+        p20 = percentile(0.20);
+        p50 = percentile(0.50);
+        
         // Pass only if ALL vertices are inside (inside_ratio == 1.0) AND minimum clearance is sufficient
         pass = (inside_ratio >= 0.999) && (min_c >= clearance);  // Allow 0.1% tolerance for numerical errors
     }
     return py::dict("pass"_a = pass, "min_clearance"_a = min_c, "mean_clearance"_a = mean_c,
-                    "p01_clearance"_a = p01, "inside_ratio"_a = inside_ratio);
+                    "p01_clearance"_a = p01, "p05_clearance"_a = p05, "p10_clearance"_a = p10,
+                    "p15_clearance"_a = p15, "p20_clearance"_a = p20, "p50_clearance"_a = p50,
+                    "inside_ratio"_a = inside_ratio);
 }
 
 // ----------------------------- 批量并行：对齐 + 采样 SDF -----------------------------

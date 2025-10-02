@@ -367,25 +367,16 @@ def compute_detailed_clearance_metrics(Vt, Ft, Vc_aligned, Fc, samples=120000, u
     # Estimate percentiles based on the distribution
     # Since we can't get exact percentiles from C++, we'll use the min and mean to estimate
     # This is a simplified approach - ideally we'd modify the C++ to return percentiles
-    min_c = percentile_result['min_clearance']
-    mean_c = percentile_result['mean_clearance']
-    p01_c = percentile_result['p01_clearance']
-    
-    # Estimate other percentiles using exponential distribution assumption
-    # This is approximate but better than vertex-to-vertex distances
-    clear_result['p05_clearance'] = min_c + (p01_c - min_c) * 5.0
-    clear_result['p10_clearance'] = min_c + (p01_c - min_c) * 10.0
-    clear_result['p15_clearance'] = min_c + (p01_c - min_c) * 15.0
-    clear_result['p20_clearance'] = min_c + (p01_c - min_c) * 20.0
-    clear_result['p50_clearance'] = mean_c  # Use mean as approximation for median
+    # C++代码现在已经返回所有百分位数，直接使用即可
+    # p05, p10, p15, p20, p50 都已包含在 percentile_result 中
     
     # Determine pass with multiple criteria
     # Strict pass requires BOTH complete containment AND minimum clearance
     is_fully_contained = clear_result.get('inside_ratio', 0) >= 0.999  # 99.9% to allow for numerical errors
     clear_result['pass_strict'] = is_fully_contained and (clear_result['min_clearance'] >= 2.0)
-    clear_result['pass_p10'] = is_fully_contained and (clear_result['p10_clearance'] >= 2.0)
-    clear_result['pass_p15'] = is_fully_contained and (clear_result['p15_clearance'] >= 2.0)
-    clear_result['pass_p20'] = is_fully_contained and (clear_result['p20_clearance'] >= 2.0)
+    clear_result['pass_p10'] = is_fully_contained and (clear_result.get('p10_clearance', 0) >= 2.0)
+    clear_result['pass_p15'] = is_fully_contained and (clear_result.get('p15_clearance', 0) >= 2.0)
+    clear_result['pass_p20'] = is_fully_contained and (clear_result.get('p20_clearance', 0) >= 2.0)
     
     return clear_result
 
