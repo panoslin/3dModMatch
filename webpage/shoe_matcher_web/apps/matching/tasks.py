@@ -146,11 +146,12 @@ def run_matching_task(task_id):
             
             # 准备匹配算法参数，从任务配置中获取
             match_params = {
-                'clearance': task.clearance,           # 间隙参数
-                'threshold': task.threshold,           # 阈值参数
-                'enable_scaling': task.enable_scaling, # 是否启用缩放
-                'enable_multi_start': task.enable_multi_start,  # 是否启用多起点
-                'max_scale': task.max_scale            # 最大缩放比例
+                'clearance': task.clearance,           # 间隙参数（mm）
+                'threshold': task.threshold,           # 通过标准（min/p10/p15/p20）
+                'enable_scaling': task.enable_scaling, # 是否启用自适应缩放
+                'enable_multi_start': task.enable_multi_start,  # 是否启用多起点对齐
+                'max_scale': task.max_scale,           # 最大缩放比例
+                'processes': settings.MAX_CONCURRENT_TASKS  # 并行进程数：控制同时处理多少个候选粗胚（建议=CPU核心数）
             }
             
             # 根据运行环境选择正确的路径传递给Docker命令

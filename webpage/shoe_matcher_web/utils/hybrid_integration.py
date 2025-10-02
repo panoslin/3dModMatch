@@ -187,7 +187,7 @@ class HybridMatcherService:
             '--export-report', '/app/output/report.json',
             '--export-ply-dir', '/app/output/ply',
             '--export-topk', str(params.get('export_topk', 3)),  # 导出前N个结果
-            '--processes', str(params.get('processes', 8))  # 使用8个进程
+            '--processes', str(params.get('processes', 8))  # 并行进程数（通过MAX_CONCURRENT_TASKS配置）
             # 暂时不生成热图
             # '--export-heatmap-dir', '/app/output/heatmaps'
         ]

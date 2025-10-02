@@ -183,6 +183,13 @@ CELERY_TASK_SOFT_TIME_LIMIT = int(os.environ.get('CELERY_TASK_SOFT_TIME_LIMIT', 
 # Matching service settings
 MATCHER_DOCKER_IMAGE = os.environ.get('MATCHER_DOCKER_IMAGE', 'hybrid-shoe-matcher:latest')
 DEFAULT_CLEARANCE = float(os.environ.get('DEFAULT_CLEARANCE', '2.0'))
+
+# MAX_CONCURRENT_TASKS: 匹配算法内部的并行进程数（处理候选粗胚的多进程数量）
+# 用途：控制 hybrid_matcher_multiprocess.py 中的 num_processes 参数
+# 说明：决定同时并行处理多少个候选粗胚文件，使用多进程提高处理速度
+# 建议：设置为CPU核心数，对于CPU密集型计算任务效率最高
+# 内存：每个进程约需 0.5-1GB 内存，总需求 = MAX_CONCURRENT_TASKS × 1GB
+# 注意：这不是Celery任务并发数！Celery匹配任务并发由 CELERY_MATCHING_CONCURRENCY 控制
 MAX_CONCURRENT_TASKS = int(os.environ.get('MAX_CONCURRENT_TASKS', '5'))
 
 # Logging configuration

@@ -109,7 +109,9 @@ services:
       # 匹配服务配置
       - MATCHER_DOCKER_IMAGE=${MATCHER_DOCKER_IMAGE:-panoslin/shoe_matcher_hybrid:latest}
       - DEFAULT_CLEARANCE=${DEFAULT_CLEARANCE:-2.0}
-      - MAX_CONCURRENT_TASKS=${MAX_CONCURRENT_TASKS:-3}
+      # MAX_CONCURRENT_TASKS: 匹配算法内部的并行进程数（处理候选粗胚的多进程数量）
+      # 建议值 = CPU核心数，对于CPU密集型计算任务，每个进程需要0.5-1GB内存
+      - MAX_CONCURRENT_TASKS=${MAX_CONCURRENT_TASKS:-12}
       - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE:-104857600}
     depends_on:
       db:
@@ -162,6 +164,9 @@ services:
       - CELERY_CONCURRENCY=${CELERY_CONCURRENCY:-4}
       # 匹配服务配置
       - MATCHER_DOCKER_IMAGE=${MATCHER_DOCKER_IMAGE:-panoslin/shoe_matcher_hybrid:latest}
+      # MAX_CONCURRENT_TASKS: 匹配算法内部的并行进程数（处理候选粗胚的多进程数量）
+      # 建议值 = CPU核心数，对于CPU密集型计算任务，每个进程需要0.5-1GB内存
+      - MAX_CONCURRENT_TASKS=${MAX_CONCURRENT_TASKS:-12}
     depends_on:
       db:
         condition: service_healthy
@@ -216,7 +221,10 @@ services:
       # Celery Matching Worker配置 - 关键：并发设为1，确保串行执行
       - CELERY_MATCHING_CONCURRENCY=${CELERY_MATCHING_CONCURRENCY:-1}
       # 匹配服务配置
-      - MATCHER_DOCKER_IMAGE=panoslin/shoe_matcher_hybrid:latest
+      - MATCHER_DOCKER_IMAGE=${MATCHER_DOCKER_IMAGE:-panoslin/shoe_matcher_hybrid:latest}
+      # MAX_CONCURRENT_TASKS: 匹配算法内部的并行进程数（处理候选粗胚的多进程数量）
+      # 建议值 = CPU核心数，对于CPU密集型计算任务，每个进程需要0.5-1GB内存
+      - MAX_CONCURRENT_TASKS=${MAX_CONCURRENT_TASKS:-12}
     depends_on:
       db:
         condition: service_healthy
