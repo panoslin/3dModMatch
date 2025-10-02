@@ -164,6 +164,22 @@
                                 <small class="text-muted">处理时间: <span id="processing-time">--</span>秒</small>
                             </div>
                         </div>
+                        <!-- 形状相似度说明卡片 -->
+                        <div class="alert alert-light border mb-3 py-2" style="font-size: 0.9rem;">
+                            <div class="row align-items-center">
+                                <div class="col-auto">
+                                    <i class="fas fa-shapes text-primary"></i>
+                                </div>
+                                <div class="col">
+                                    <strong>形状相似度：</strong>
+                                    表示鞋模与粗胚的几何形状匹配程度（通过Chamfer距离衡量，数值越小越相似）。
+                                    <span class="badge bg-success"><i class="fas fa-star"></i> < 2mm 优秀</span>
+                                    <span class="badge bg-primary"><i class="fas fa-thumbs-up"></i> 2-5mm 良好</span>
+                                    <span class="badge bg-warning text-dark"><i class="fas fa-minus-circle"></i> 5-10mm 一般</span>
+                                    <span class="badge bg-secondary"><i class="fas fa-question-circle"></i> > 10mm 较差</span>
+                                </div>
+                            </div>
+                        </div>
                         <div class="row">
                             <div class="col-12">
                                 <div class="alert alert-info py-2 px-3 mb-0 d-flex align-items-center" style="background-color: #e7f3ff; border-color: #b3d9ff;">
@@ -183,7 +199,13 @@
                                     <th>覆盖率</th>
                                     <th>体积比</th>
                                     <th>P15间隙</th>
-                                    <th>状态</th>
+                                    <th>
+                                        形状相似度
+                                        <i class="fas fa-info-circle text-muted" 
+                                           data-bs-toggle="tooltip" 
+                                           data-bs-placement="top"
+                                           title="Chamfer距离：两个模型表面的平均距离，数值越小表示形状越相似。<2mm=优秀，2-5mm=良好，5-10mm=一般，>10mm=较差。用于评估配准质量和几何匹配度。"></i>
+                                    </th>
                                     <th>操作</th>
                                 </tr>
                             </thead>

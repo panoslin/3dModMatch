@@ -798,7 +798,7 @@ class MatchingApp {
         // ==================== 渲染结果行 ====================
         // 遍历每个匹配结果，生成表格行
         results.forEach((result, index) => {
-            const statusBadge = this.getStatusBadge(result);
+            const chamferBadge = this.getChamferBadge(result);
             
             // ==================== 计算覆盖率 ====================
             // 使用实际的覆盖率，如果没有则基于P15间隙估算
@@ -833,7 +833,7 @@ class MatchingApp {
                     <td>
                         <span class="badge bg-warning text-dark">${result.p15_clearance.toFixed(2)}mm</span>
                     </td>
-                    <td>${statusBadge}</td>
+                    <td>${chamferBadge}</td>
                     <td>
                         <button class="btn btn-sm btn-outline-primary" onclick="matchingApp.showResultDetail(${index})">
                             <i class="fas fa-eye"></i> 详情
@@ -843,10 +843,65 @@ class MatchingApp {
             `);
             tbody.append(row);
         });
+        
+        // 初始化 Bootstrap tooltips
+        this.initializeTooltips();
     }
     
     /**
-     * 获取状态徽章HTML
+     * 初始化工具提示
+     * 
+     * 为表格中的Chamfer距离徽章启用Bootstrap tooltip
+     */
+    initializeTooltips() {
+        // 使用 jQuery 选择所有 tooltip 元素并初始化
+        $('[data-bs-toggle="tooltip"]').each(function() {
+            new bootstrap.Tooltip(this);
+        });
+    }
+    
+    /**
+     * 获取Chamfer距离徽章HTML
+     * 
+     * 根据Chamfer距离值生成带颜色的徽章，反映几何相似度
+     * 
+     * @param {Object} result - 匹配结果对象
+     * @returns {string} Chamfer距离徽章的HTML字符串
+     */
+    getChamferBadge(result) {
+        const chamfer = result.chamfer || 0;
+        let badgeClass = '';
+        let icon = '';
+        let tooltip = '';
+        
+        if (chamfer < 2.0) {
+            badgeClass = 'bg-success';  // 绿色：优秀
+            icon = '<i class="fas fa-star"></i>';
+            tooltip = '优秀：形状高度相似';
+        } else if (chamfer < 5.0) {
+            badgeClass = 'bg-primary';  // 蓝色：良好
+            icon = '<i class="fas fa-thumbs-up"></i>';
+            tooltip = '良好：形状匹配度较高';
+        } else if (chamfer < 10.0) {
+            badgeClass = 'bg-warning text-dark';  // 黄色：一般
+            icon = '<i class="fas fa-minus-circle"></i>';
+            tooltip = '一般：形状有一定差异';
+        } else {
+            badgeClass = 'bg-secondary';  // 灰色：较差
+            icon = '<i class="fas fa-question-circle"></i>';
+            tooltip = '较差：形状差异明显';
+        }
+        
+        return `<span class="badge ${badgeClass}" 
+                      data-bs-toggle="tooltip" 
+                      data-bs-placement="top"
+                      title="${tooltip}">
+                    ${icon} ${chamfer.toFixed(2)}mm
+                </span>`;
+    }
+    
+    /**
+     * 获取状态徽章HTML（保留用于其他地方）
      * 
      * 根据匹配结果生成相应的状态徽章，用于在表格中显示
      * 
@@ -2191,7 +2246,7 @@ class MatchingApp {
                 }
             }
             
-            const statusBadge = this.getMatchingStatusBadge(result);
+            const chamferBadge = this.getChamferBadge(result);
             
             return `
                 <tr>
@@ -2208,7 +2263,7 @@ class MatchingApp {
                     <td>
                         <span class="badge bg-success">${result.p15_clearance?.toFixed(2) || 0}mm</span>
                     </td>
-                    <td>${statusBadge}</td>
+                    <td>${chamferBadge}</td>
                     <td>
                         <button class="btn btn-sm btn-outline-primary" onclick="matchingApp.showBatchResultDetail(${index})">
                             <i class="fas fa-eye"></i> 详情
@@ -2219,6 +2274,9 @@ class MatchingApp {
         }).join('');
         
         $('#results-table tbody').html(tableHtml);
+        
+        // 初始化 Bootstrap tooltips
+        this.initializeTooltips();
         
         // 更新结果统计
         $('#results-count').text(`找到 ${results.length} 个匹配结果`);
