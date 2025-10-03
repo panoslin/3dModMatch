@@ -33,6 +33,11 @@ class MatchingApp {
         this.completedMatches = [];          // 已完成的匹配结果
         this.isQueueProcessing = false;      // 队列是否正在处理中
         
+        // ==================== 防重复点击控制 ====================
+        this.isMatchingStarting = false;     // 匹配任务是否正在启动中
+        this.lastMatchingTime = 0;           // 上次匹配的时间戳
+        this.matchingCooldown = 2000;        // 冷却时间（毫秒）
+        
         // ==================== 3D 查看器引用 ====================
         this.transparentViewer = null;       // ThreeModelViewer 实例
         this.overlayViewer = null;           // TransparentOverlayViewer 实例
@@ -327,15 +332,46 @@ class MatchingApp {
      * 这是匹配流程的入口点，处理单文件匹配和批量匹配的逻辑分发
      */
     async startMatching() {
+        // ==================== 防重复点击检查 ====================
+        const now = Date.now();
+        const timeSinceLastClick = now - this.lastMatchingTime;
+        
+        // 检查是否正在启动中
+        if (this.isMatchingStarting) {
+            console.log('⚠️ 匹配任务正在启动中，忽略重复点击');
+            Utils.showNotification('匹配任务正在启动中，请稍候...', 'info');
+            return;
+        }
+        
+        // 检查冷却时间
+        if (timeSinceLastClick < this.matchingCooldown) {
+            const remainingTime = Math.ceil((this.matchingCooldown - timeSinceLastClick) / 1000);
+            console.log(`⏱️ 冷却中，剩余 ${remainingTime} 秒`);
+            Utils.showNotification(`请等待 ${remainingTime} 秒后再次点击`, 'warning');
+            
+            // 显示冷却状态
+            this.setMatchingButtonCooldown(remainingTime);
+            return;
+        }
+        
+        // ==================== 立即禁用按钮并显示反馈 ====================
+        this.isMatchingStarting = true;
+        this.lastMatchingTime = now;
+        this.setMatchingButtonLoading(true);
+        
         // ==================== 批量匹配检查 ====================
         // 检查是否有多个鞋模文件，如果有则显示批量匹配选项
         if (this.uploadedShoeModels && this.uploadedShoeModels.length > 1) {
             // 检查是否选择了分类
             if (this.selectedCategories.length === 0) {
+                this.isMatchingStarting = false;
+                this.setMatchingButtonLoading(false);
                 Utils.showNotification('请先选择粗胚分类', 'warning');
                 return;
             }
             // 显示批量匹配选项Modal
+            this.isMatchingStarting = false;
+            this.setMatchingButtonLoading(false);
             this.showBatchMatchingOptions();
             return;
         }
@@ -343,6 +379,8 @@ class MatchingApp {
         // ==================== 单文件匹配验证 ====================
         // 验证是否有鞋模文件和选择的分类
         if (!this.currentShoeModel || this.selectedCategories.length === 0) {
+            this.isMatchingStarting = false;
+            this.setMatchingButtonLoading(false);
             Utils.showNotification('请先上传鞋模文件并选择粗胚分类', 'warning');
             return;
         }
@@ -351,6 +389,8 @@ class MatchingApp {
             // ==================== 参数验证 ====================
             // 验证匹配参数的有效性
             if (!this.validateMatchingParams()) {
+                this.isMatchingStarting = false;
+                this.setMatchingButtonLoading(false);
                 return;
             }
             
@@ -387,13 +427,83 @@ class MatchingApp {
                 this.matchingStartTime = Date.now(); // 记录开始时间，用于进度估算
                 this.startPolling(this.currentTask);
                 Utils.showNotification('匹配任务已开始', 'success');
+                
+                // 任务成功启动后解除启动中状态
+                this.isMatchingStarting = false;
+            } else {
+                throw new Error(response.message || '启动失败');
             }
             
         } catch (error) {
             // 匹配启动失败，恢复UI状态
+            this.isMatchingStarting = false;
+            this.setMatchingButtonLoading(false);
             this.hideMatchingStatus();
             Utils.showNotification('启动匹配失败: ' + error.message, 'error');
         }
+    }
+    
+    /**
+     * 设置开始匹配按钮的加载状态
+     * 
+     * @param {boolean} isLoading - 是否处于加载状态
+     */
+    setMatchingButtonLoading(isLoading) {
+        const button = $('#startMatching');
+        
+        if (isLoading) {
+            // 显示加载状态
+            button.prop('disabled', true);
+            button.removeClass('btn-warning btn-secondary cooldown').addClass('btn-info');
+            button.html(`
+                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                正在启动...
+            `);
+            
+            // 添加视觉反馈动画
+            button.addClass('button-clicked');
+            setTimeout(() => button.removeClass('button-clicked'), 300);
+        } else {
+            // 恢复正常状态
+            button.prop('disabled', false);
+            button.removeClass('btn-info btn-secondary cooldown').addClass('btn-warning');
+            button.html('<i class="fas fa-play me-2"></i>开始匹配');
+        }
+    }
+    
+    /**
+     * 设置开始匹配按钮的冷却状态
+     * 
+     * @param {number} remainingSeconds - 剩余冷却秒数
+     */
+    setMatchingButtonCooldown(remainingSeconds) {
+        const button = $('#startMatching');
+        
+        // 设置冷却状态
+        button.prop('disabled', true);
+        button.removeClass('btn-warning btn-info').addClass('btn-secondary cooldown');
+        button.html(`
+            <i class="fas fa-hourglass-half me-2"></i>
+            冷却中 (${remainingSeconds}秒)
+        `);
+        
+        // 倒计时更新
+        let remaining = remainingSeconds;
+        const countdownInterval = setInterval(() => {
+            remaining--;
+            if (remaining > 0) {
+                button.html(`
+                    <i class="fas fa-hourglass-half me-2"></i>
+                    冷却中 (${remaining}秒)
+                `);
+            } else {
+                // 冷却完成，恢复正常状态
+                clearInterval(countdownInterval);
+                button.prop('disabled', false);
+                button.removeClass('btn-secondary cooldown').addClass('btn-warning');
+                button.html('<i class="fas fa-play me-2"></i>开始匹配');
+            }
+        }, 1000);
     }
     
     /**

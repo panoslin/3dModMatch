@@ -264,4 +264,45 @@ body {
     border-color: var(--primary-color) !important;
 }
 
+/* 按钮点击反馈动画 */
+.button-clicked {
+    animation: buttonPulse 0.3s ease-out;
+}
+
+@keyframes buttonPulse {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(0.95);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* 按钮加载状态 */
+.btn.loading {
+    position: relative;
+    pointer-events: none;
+    opacity: 0.8;
+}
+
+/* 按钮禁用冷却状态 */
+.btn.cooldown {
+    position: relative;
+    cursor: not-allowed !important;
+}
+
+.btn.cooldown::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.3);
+    pointer-events: none;
+}
+
 
