@@ -752,6 +752,51 @@ class TransparentOverlayViewer {
     }
 
     /**
+     * 获取当前的变换矩阵（用于保存）
+     */
+    getCurrentTransform() {
+        if (!this.targetModel || !this.candidateModel) {
+            console.warn('无法获取变换: 模型未加载');
+            return null;
+        }
+        
+        // 更新世界矩阵
+        this.targetModel.updateMatrixWorld(true);
+        this.candidateModel.updateMatrixWorld(true);
+        
+        // 获取鞋模的变换矩阵
+        const targetMatrix = this.targetModel.matrixWorld.clone();
+        const targetArray = targetMatrix.toArray();
+        const targetTransform = [
+            [targetArray[0], targetArray[4], targetArray[8], targetArray[12]],
+            [targetArray[1], targetArray[5], targetArray[9], targetArray[13]],
+            [targetArray[2], targetArray[6], targetArray[10], targetArray[14]],
+            [targetArray[3], targetArray[7], targetArray[11], targetArray[15]]
+        ];
+        
+        // 获取粗胚的变换矩阵
+        const candidateMatrix = this.candidateModel.matrixWorld.clone();
+        const candidateArray = candidateMatrix.toArray();
+        const candidateTransform = [
+            [candidateArray[0], candidateArray[4], candidateArray[8], candidateArray[12]],
+            [candidateArray[1], candidateArray[5], candidateArray[9], candidateArray[13]],
+            [candidateArray[2], candidateArray[6], candidateArray[10], candidateArray[14]],
+            [candidateArray[3], candidateArray[7], candidateArray[11], candidateArray[15]]
+        ];
+        
+        console.log('鞋模变换矩阵:', targetTransform);
+        console.log('粗胚变换矩阵:', candidateTransform);
+        
+        return {
+            target_transform: targetTransform,
+            candidate_transform: candidateTransform,
+            position: this.targetModel.position.toArray(),
+            quaternion: this.targetModel.quaternion.toArray(),
+            scale: this.targetModel.scale.toArray()
+        };
+    }
+
+    /**
      * 计算模型的PCA主轴（中线）
      */
     computePCAAxis(model) {

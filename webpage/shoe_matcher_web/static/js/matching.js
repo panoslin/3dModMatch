@@ -37,6 +37,7 @@ class MatchingApp {
         this.isMatchingStarting = false;     // 匹配任务是否正在启动中
         this.lastMatchingTime = 0;           // 上次匹配的时间戳
         this.matchingCooldown = 2000;        // 冷却时间（毫秒）
+        this.isSavingAdjustment = false;     // 是否正在保存调整
         
         // ==================== 3D 查看器引用 ====================
         this.transparentViewer = null;       // ThreeModelViewer 实例
@@ -939,10 +940,17 @@ class MatchingApp {
                 coverageRate = 0;
             }
             
+            // 检查是否手动调整过
+            const manuallyAdjusted = result.manually_adjusted || false;
+            const adjustedBadge = manuallyAdjusted ? 
+                '<span class="badge bg-warning text-dark ms-1" title="此结果已手动调整位置/角度"><i class="fas fa-hand-paper"></i> 已调整</span>' : 
+                '';
+            
             const row = $(`
                 <tr data-result-index="${index}">
                     <td>
                         <strong>${result.blank_name}</strong>
+                        ${adjustedBadge}
                         <br><small class="text-muted">缩放: ${result.scale_used.toFixed(3)}</small>
                     </td>
                     <td>
@@ -1225,6 +1233,26 @@ class MatchingApp {
             $('#model-blank-name').text(blankName);
         } else {
             $('#model-blank-name').text('未知粗胚');
+        }
+        
+        // 显示手动调整标识（如果有）
+        if (result.manually_adjusted) {
+            $('#manual-adjustment-badge').show();
+            
+            // 设置调整时间
+            if (result.adjusted_at) {
+                const adjustedDate = new Date(result.adjusted_at);
+                const timeStr = adjustedDate.toLocaleString('zh-CN', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                $('#adjustment-time').text(`(${timeStr})`);
+            }
+        } else {
+            $('#manual-adjustment-badge').hide();
         }
         
         // 使用实际的覆盖率，如果没有则基于P15间隙估算
@@ -4449,6 +4477,7 @@ class MatchingApp {
         $('#toggle-centerlines').off('click');
         $('#align-centerlines').off('click');
         $('#lock-centerlines').off('click');
+        $('#save-adjustment').off('click');  // 移除保存调整按钮的旧事件
         
         console.log('🔧 设置工具栏事件，overlayViewer存在:', !!this.overlayViewer);
         
@@ -4584,7 +4613,191 @@ class MatchingApp {
             }
         });
         
+        // 保存调整按钮
+        $('#save-adjustment').on('click', () => {
+            this.saveCurrentAdjustment();
+        });
+        
         console.log('已设置3D查看器工具栏');
+    }
+    
+    /**
+     * 保存当前的调整并重新计算匹配指标
+     */
+    async saveCurrentAdjustment() {
+        // ==================== 防重复保存检查 ====================
+        if (this.isSavingAdjustment) {
+            console.log('⚠️ 正在保存中，忽略重复点击');
+            return;
+        }
+        
+        if (!this.overlayViewer) {
+            Utils.showNotification('查看器未初始化', 'error');
+            return;
+        }
+        
+        if (!this.currentTask || !this.currentTask.task_id) {
+            Utils.showNotification('无法获取任务信息', 'error');
+            return;
+        }
+        
+        // 获取当前查看的结果索引（从alignmentData中）
+        const resultIndex = this.overlayViewer.alignmentData?.result_index;
+        if (resultIndex === undefined) {
+            Utils.showNotification('无法获取结果索引', 'error');
+            return;
+        }
+        
+        // ==================== 设置保存中标志 ====================
+        this.isSavingAdjustment = true;
+        
+        try {
+            // 显示加载状态
+            const button = $('#save-adjustment');
+            const originalHtml = button.html();
+            button.prop('disabled', true);
+            button.html('<span class="spinner-border spinner-border-sm me-1"></span>计算中...');
+            
+            // 显示详细的进度提示
+            Utils.showNotification('⏳ 正在重新计算匹配指标，约需5-10秒，请稍候...', 'info', 10000);
+            
+            // 获取当前变换
+            const transformData = this.overlayViewer.getCurrentTransform();
+            if (!transformData) {
+                throw new Error('无法获取变换矩阵');
+            }
+            
+            console.log('📤 准备保存调整:', {
+                taskId: this.currentTask.task_id,
+                resultIndex: resultIndex,
+                transform: transformData
+            });
+            
+            // 调用API保存并重新计算
+            const response = await Utils.apiRequest(
+                `/api/matching/${this.currentTask.task_id}/save-adjustment/${resultIndex}/`,
+                {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        target_transform: transformData.target_transform,
+                        candidate_transform: transformData.candidate_transform,
+                        recalculate: true  // 请求重新计算指标
+                    })
+                }
+            );
+            
+            if (response.success) {
+                const data = response.data;
+                
+                // 显示成功消息
+                Utils.showNotification(response.message, 'success');
+                console.log('✅ 保存成功:', data);
+                
+                // 如果重新计算了指标，显示对比
+                if (data.recalculated && data.original_metrics) {
+                    this.showMetricsComparison(data.original_metrics, data.metrics);
+                }
+                
+                // 更新显示的指标
+                if (data.metrics) {
+                    this.updateMetricsDisplay(data.metrics);
+                }
+                
+                // 重新加载结果以刷新表格
+                if (this.currentTask) {
+                    await this.loadResults();
+                }
+            } else {
+                throw new Error(response.message || '保存失败');
+            }
+            
+            // 恢复按钮状态
+            button.prop('disabled', false);
+            button.html(originalHtml);
+            
+            // 重置保存中标志
+            this.isSavingAdjustment = false;
+            
+        } catch (error) {
+            console.error('保存调整失败:', error);
+            Utils.showNotification('保存失败: ' + error.message, 'error');
+            
+            // 恢复按钮状态
+            const button = $('#save-adjustment');
+            button.prop('disabled', false);
+            button.html('<i class="fas fa-save me-1"></i>保存调整');
+            
+            // 重置保存中标志
+            this.isSavingAdjustment = false;
+        }
+    }
+    
+    /**
+     * 更新指标显示
+     */
+    updateMetricsDisplay(metrics) {
+        if (metrics.chamfer !== undefined) {
+            $('#metric-chamfer').text(metrics.chamfer.toFixed(2));
+        }
+        if (metrics.p15_clearance !== undefined) {
+            $('#metric-p15').text(metrics.p15_clearance.toFixed(2));
+        }
+        if (metrics.inside_ratio !== undefined) {
+            $('#metric-coverage').text((metrics.inside_ratio * 100).toFixed(1));
+        }
+        if (metrics.volume_ratio !== undefined) {
+            $('#metric-volume').text(metrics.volume_ratio.toFixed(2));
+        }
+        
+        console.log('✅ 指标显示已更新');
+    }
+
+    /**
+     * 显示调整前后的指标对比
+     */
+    showMetricsComparison(original, updated) {
+        const changes = [];
+        
+        // 比较Chamfer距离
+        if (original.chamfer && updated.chamfer) {
+            const diff = updated.chamfer - original.chamfer;
+            const pct = ((diff / original.chamfer) * 100).toFixed(1);
+            changes.push(`Chamfer: ${original.chamfer.toFixed(2)} → ${updated.chamfer.toFixed(2)} (${diff > 0 ? '+' : ''}${pct}%)`);
+        }
+        
+        // 比较P15间隙
+        if (original.p15_clearance && updated.p15_clearance) {
+            const diff = updated.p15_clearance - original.p15_clearance;
+            const pct = ((diff / original.p15_clearance) * 100).toFixed(1);
+            changes.push(`P15间隙: ${original.p15_clearance.toFixed(2)} → ${updated.p15_clearance.toFixed(2)} (${diff > 0 ? '+' : ''}${pct}%)`);
+        }
+        
+        // 比较覆盖率
+        if (original.inside_ratio && updated.inside_ratio) {
+            const diff = (updated.inside_ratio - original.inside_ratio) * 100;
+            changes.push(`覆盖率: ${(original.inside_ratio * 100).toFixed(1)}% → ${(updated.inside_ratio * 100).toFixed(1)}% (${diff > 0 ? '+' : ''}${diff.toFixed(1)}%)`);
+        }
+        
+        if (changes.length > 0) {
+            console.log('📊 指标变化对比:');
+            changes.forEach(change => console.log(`   ${change}`));
+            
+            // 可选：显示在UI上
+            const comparisonHtml = `
+                <div class="alert alert-info alert-dismissible fade show mt-2" role="alert">
+                    <strong>📊 指标变化对比：</strong><br>
+                    ${changes.map(c => `<small>• ${c}</small>`).join('<br>')}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+            
+            // 在指标面板顶部插入对比信息
+            const metricsPanel = $('#metrics-panel');
+            if (metricsPanel.length) {
+                metricsPanel.find('.alert').remove(); // 移除旧的
+                metricsPanel.prepend(comparisonHtml);
+            }
+        }
     }
 
     /**

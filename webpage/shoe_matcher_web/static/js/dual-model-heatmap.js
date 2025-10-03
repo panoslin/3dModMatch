@@ -38,7 +38,7 @@ class AlignmentRestorer {
             // 2. 加载原始模型
             await this.loadOriginalModels(taskId, resultIndex);
             
-            // 3. 应用精确变换
+            // 3. 应用精确变换（会自动使用手动调整后的变换矩阵）
             this.applyExactTransformation();
             
             // 4. 验证对齐质量
@@ -289,46 +289,76 @@ class AlignmentRestorer {
 
     /**
      * 应用精确变换
-     * 注意：渲染时忽略缩放，只应用刚体变换（旋转+平移）
+     * 注意：原始ICP变换应用到粗胚，手动调整变换应用到鞋模
      */
     applyExactTransformation() {
-        if (!this.candidateModel || !this.alignmentData.transform_matrix) {
+        if (!this.alignmentData.transform_matrix) {
             console.error('缺少变换所需的数据');
             return;
         }
 
         try {
-            console.log('🔧 开始应用变换（不含缩放）:', {
-                mirrored: this.alignmentData.mirrored,
-                hasTransformMatrix: !!this.alignmentData.transform_matrix
-            });
+            const isManuallyAdjusted = this.alignmentData.manually_adjusted;
             
-            // 重置到原始状态
-            this.candidateModel.matrix.identity();
-            this.candidateModel.position.set(0, 0, 0);
-            this.candidateModel.rotation.set(0, 0, 0);
-            this.candidateModel.scale.set(1, 1, 1);
-            this.candidateModel.updateMatrix();
-            
-            // 解析变换矩阵（包含旋转和平移）
+            // 解析变换矩阵
             const transformMatrix = this.parseTransformMatrix(
                 this.alignmentData.transform_matrix
             );
-
-            console.log('🔄 应用变换矩阵:', {
-                determinant: transformMatrix.determinant().toFixed(4)
-            });
             
-            // 如果需要镜像处理
-            if (this.alignmentData.mirrored) {
-                console.log('🪞 应用镜像变换 (YZ平面)');
-                const mirrorMatrix = this.createMirrorMatrix('YZ');
-                transformMatrix.premultiply(mirrorMatrix);
+            if (isManuallyAdjusted) {
+                // 手动调整：应用到鞋模（targetModel）
+                console.log('🔧 手动调整模式：应用变换到鞋模');
+                
+                if (!this.targetModel) {
+                    console.error('目标模型不存在');
+                    return;
+                }
+                
+                // 重置鞋模
+                this.targetModel.matrix.identity();
+                this.targetModel.position.set(0, 0, 0);
+                this.targetModel.rotation.set(0, 0, 0);
+                this.targetModel.scale.set(1, 1, 1);
+                this.targetModel.updateMatrix();
+                
+                // 应用变换到鞋模
+                this.targetModel.applyMatrix4(transformMatrix);
+                this.targetModel.updateMatrixWorld(true);
+                
+                console.log('✅ 变换已应用到鞋模');
+            } else {
+                // 原始ICP：应用到粗胚（candidateModel）
+                console.log('🔧 ICP对齐模式：应用变换到粗胚');
+                
+                if (!this.candidateModel) {
+                    console.error('候选模型不存在');
+                    return;
+                }
+                
+                // 重置粗胚到原始状态
+                this.candidateModel.matrix.identity();
+                this.candidateModel.position.set(0, 0, 0);
+                this.candidateModel.rotation.set(0, 0, 0);
+                this.candidateModel.scale.set(1, 1, 1);
+                this.candidateModel.updateMatrix();
+                
+                console.log('🔄 应用变换矩阵:', {
+                    determinant: transformMatrix.determinant().toFixed(4)
+                });
+                
+                // 如果需要镜像处理
+                if (this.alignmentData.mirrored) {
+                    console.log('🪞 应用镜像变换 (YZ平面)');
+                    const mirrorMatrix = this.createMirrorMatrix('YZ');
+                    transformMatrix.premultiply(mirrorMatrix);
+                }
+                
+                // 应用变换矩阵到粗胚
+                this.candidateModel.applyMatrix4(transformMatrix);
+                this.candidateModel.updateMatrixWorld(true);
+                
+                console.log('✅ 变换已应用到粗胚');
             }
-            
-            // 应用变换矩阵（只包含旋转和平移，不包含缩放）
-            this.candidateModel.applyMatrix4(transformMatrix);
-            this.candidateModel.updateMatrixWorld(true);
             
             // 验证变换结果
             const finalBbox = new THREE.Box3().setFromObject(this.candidateModel);

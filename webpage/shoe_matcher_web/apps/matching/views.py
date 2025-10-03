@@ -312,13 +312,25 @@ def get_alignment_data_api(request, task_id, result_index):
                 logger.error(f"查询 blank 模型失败: {e}")
         
         # 构建对齐数据
+        # 检查是否有手动调整
+        manually_adjusted = result.get('manually_adjusted', False)
+        
+        # 如果手动调整过，使用调整后的变换矩阵；否则使用原始ICP变换
+        if manually_adjusted:
+            transform_matrix = result.get('transform', [])
+            logger.info(f"使用手动调整后的变换矩阵（调整时间: {result.get('adjusted_at')}）")
+        else:
+            transform_matrix = result.get('transform', [])
+            logger.info(f"使用原始ICP对齐变换矩阵")
+        
         alignment_data = {
+            'result_index': int(result_index),
             'target_id': task.shoe_model.id,
             'target_type': 'shoe',
             'candidate_id': candidate_id,
             'candidate_type': 'blank',
             'candidate_name': candidate_name,
-            'transform_matrix': result.get('transform', []),  # 4x4矩阵
+            'transform_matrix': transform_matrix,  # 使用正确的变换矩阵
             'mirrored': result.get('mirrored', False),
             'chamfer_distance': result.get('chamfer', 0),
             'scale_used': result.get('scale_used', 1.0),
@@ -328,7 +340,11 @@ def get_alignment_data_api(request, task_id, result_index):
                 'y_up': True
             },
             'alignment_quality': _calculate_alignment_quality(result),
-            'timestamp': task.completed_at.isoformat() if task.completed_at else None
+            'timestamp': task.completed_at.isoformat() if task.completed_at else None,
+            'manually_adjusted': manually_adjusted,
+            'adjusted_at': result.get('adjusted_at') if manually_adjusted else None,
+            # 添加原始变换用于对比
+            'original_transform': result.get('original_transform') if manually_adjusted else None
         }
         
         # 保存对齐数据到缓存
@@ -687,6 +703,155 @@ def clear_best_match_api(request, task_id):
         return Response({
             'success': False,
             'error': 'clear_failed',
+            'message': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def save_adjustment_api(request, task_id, result_index):
+    """
+    保存手动调整的变换矩阵并重新计算匹配指标
+    
+    请求体：
+    {
+        "transform": [[...], [...], [...], [...]],  # 4x4变换矩阵
+        "recalculate": true  # 是否重新计算指标
+    }
+    """
+    try:
+        task = get_object_or_404(MatchingTask, task_id=task_id)
+        
+        # 检查任务状态
+        if task.status != 'completed':
+            return Response({
+                'success': False,
+                'error': 'task_not_completed',
+                'message': '只能为已完成的任务保存调整'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # 验证结果索引
+        if not task.result_data or 'results' not in task.result_data:
+            return Response({
+                'success': False,
+                'error': 'no_results',
+                'message': '任务没有匹配结果'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        results = task.result_data['results']
+        if result_index < 0 or result_index >= len(results):
+            return Response({
+                'success': False,
+                'error': 'invalid_index',
+                'message': f'索引超出范围：0-{len(results)-1}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # 获取变换矩阵
+        target_transform = request.data.get('target_transform')
+        candidate_transform = request.data.get('candidate_transform')
+        recalculate = request.data.get('recalculate', True)
+        
+        # 兼容旧版本（只有transform字段）
+        if not target_transform and request.data.get('transform'):
+            target_transform = request.data.get('transform')
+        
+        if not target_transform:
+            return Response({
+                'success': False,
+                'error': 'missing_transform',
+                'message': '缺少变换矩阵'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # 更新结果中的变换矩阵
+        result = results[result_index]
+        
+        # 保存原始变换（如果是第一次调整）
+        if 'original_transform' not in result:
+            result['original_transform'] = result.get('transform', target_transform)
+            result['original_chamfer'] = result.get('chamfer', 0)
+            result['original_p15_clearance'] = result.get('p15_clearance', 0)
+            result['original_inside_ratio'] = result.get('inside_ratio', 0)
+        
+        result['transform'] = target_transform
+        result['candidate_transform'] = candidate_transform  # 也保存粗胚变换
+        result['manually_adjusted'] = True
+        result['adjusted_at'] = timezone.now().isoformat()
+        
+        # 重新计算匹配指标
+        new_metrics = None
+        recalculation_error = None
+        
+        if recalculate:
+            logger.info(f"重新计算指标: 任务{task_id}, 结果{result_index}")
+            try:
+                from .recalculation_service import recalculate_metrics_with_transform
+                
+                new_metrics = recalculate_metrics_with_transform(
+                    task, 
+                    result_index, 
+                    target_transform, 
+                    candidate_transform
+                )
+                
+                # 更新结果中的指标
+                result.update(new_metrics)
+                
+                logger.info(f"指标已更新: Chamfer={new_metrics.get('chamfer', 0):.2f}, "
+                          f"P15={new_metrics.get('p15_clearance', 0):.2f}")
+                
+            except Exception as calc_error:
+                logger.error(f"重新计算指标失败: {calc_error}")
+                import traceback
+                logger.error(traceback.format_exc())
+                recalculation_error = str(calc_error)
+                # 不中断保存，继续使用原有指标
+                new_metrics = None
+        
+        # 保存到数据库
+        task.result_data['results'] = results
+        task.save()
+        
+        logger.info(f"保存调整: 任务{task_id}, 结果{result_index}")
+        
+        # 构建响应消息
+        if new_metrics:
+            message = '✅ 调整已保存，匹配指标已重新计算'
+        elif recalculation_error:
+            message = f'✅ 调整已保存（指标计算失败: {recalculation_error}）'
+        else:
+            message = '✅ 调整已保存（未请求重新计算）'
+        
+        return Response({
+            'success': True,
+            'message': message,
+            'data': {
+                'result_index': result_index,
+                'blank_name': result.get('blank_name', ''),
+                'manually_adjusted': True,
+                'recalculated': new_metrics is not None,
+                'metrics': {
+                    'chamfer': result.get('chamfer', 0),
+                    'p15_clearance': result.get('p15_clearance', 0),
+                    'p10_clearance': result.get('p10_clearance', 0),
+                    'inside_ratio': result.get('inside_ratio', 0),
+                    'volume_ratio': result.get('volume_ratio', 0),
+                    'min_clearance': result.get('min_clearance', 0),
+                    'mean_clearance': result.get('mean_clearance', 0)
+                },
+                'original_metrics': {
+                    'chamfer': result.get('original_chamfer', 0),
+                    'p15_clearance': result.get('original_p15_clearance', 0),
+                    'inside_ratio': result.get('original_inside_ratio', 0)
+                } if 'original_chamfer' in result else None
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"保存调整失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return Response({
+            'success': False,
+            'error': 'save_failed',
             'message': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

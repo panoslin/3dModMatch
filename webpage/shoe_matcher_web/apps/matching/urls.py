@@ -26,4 +26,9 @@ urlpatterns = [
     path('<str:task_id>/clear-selection/', 
          views.clear_best_match_api, 
          name='clear_best_match'),
+    
+    # 保存手动调整
+    path('<str:task_id>/save-adjustment/<int:result_index>/',
+         views.save_adjustment_api,
+         name='save_adjustment'),
 ]

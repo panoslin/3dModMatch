@@ -42,6 +42,13 @@
                                         </span>
                                         <span class="fw-bold text-break" id="model-blank-name">--</span>
                                     </div>
+                                    <!-- 手动调整标识 -->
+                                    <div id="manual-adjustment-badge" class="mt-2" style="display: none;">
+                                        <span class="badge bg-warning text-dark">
+                                            <i class="fas fa-hand-paper me-1"></i>已手动调整
+                                        </span>
+                                        <small class="text-muted ms-2" id="adjustment-time">--</small>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -220,6 +227,9 @@
                                         </button>
                                         <button type="button" class="btn btn-outline-secondary" id="lock-centerlines" title="锁定中线对齐，保持鞋模沿中线移动和旋转">
                                             <i class="fas fa-unlock me-1"></i>锁定中线
+                                        </button>
+                                        <button type="button" class="btn btn-outline-success" id="save-adjustment" title="保存当前调整并重新计算匹配指标">
+                                            <i class="fas fa-save me-1"></i>保存调整
                                         </button>
                                         <button type="button" class="btn btn-outline-warning" id="reset-shoe-transform" title="恢复到原始对齐位置">
                                             <i class="fas fa-undo me-1"></i>重置
