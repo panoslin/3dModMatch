@@ -1299,6 +1299,30 @@ class MatchingApp {
      */
     async loadTransparentOverlay(taskId, resultIndex) {
         try {
+            // ==================== 清理旧的查看器实例 ====================
+            if (this.overlayViewer) {
+                console.log('🧹 清理旧的透明叠加查看器...');
+                
+                // 禁用交互监听器
+                if (this.overlayViewer.disableInteraction) {
+                    this.overlayViewer.disableInteraction();
+                }
+                
+                // 移除所有中线对象
+                if (this.overlayViewer.removeCenterlines) {
+                    this.overlayViewer.removeCenterlines();
+                }
+                
+                // 重置状态
+                if (this.overlayViewer.resetCenterlineStates) {
+                    this.overlayViewer.resetCenterlineStates();
+                }
+                
+                // 清空引用
+                this.overlayViewer = null;
+                console.log('✅ 旧查看器已清理');
+            }
+            
             // ==================== 清空并准备容器 ====================
             const container = document.getElementById('heatmap-preview');
             container.innerHTML = '';
@@ -1329,6 +1353,9 @@ class MatchingApp {
             
             // ==================== 设置交互工具栏 ====================
             this.setupViewerToolbar();
+            
+            // ==================== 重置工具栏UI状态 ====================
+            this.resetViewerToolbarUI();
             
             console.log(`透明叠加视图加载完成: ${taskId}/${resultIndex}`);
             
@@ -4419,6 +4446,11 @@ class MatchingApp {
         // 移除旧的事件监听器（如果存在）
         $('#viewer-mode-toolbar').off('click');
         $('#reset-shoe-transform').off('click');
+        $('#toggle-centerlines').off('click');
+        $('#align-centerlines').off('click');
+        $('#lock-centerlines').off('click');
+        
+        console.log('🔧 设置工具栏事件，overlayViewer存在:', !!this.overlayViewer);
         
         // 模式切换按钮
         $('#viewer-mode-toolbar button').on('click', (e) => {
@@ -4459,54 +4491,130 @@ class MatchingApp {
         
         // 显示/隐藏中线按钮
         $('#toggle-centerlines').on('click', () => {
-            if (this.overlayViewer) {
-                this.overlayViewer.toggleCenterlines();
-                
-                const button = $('#toggle-centerlines');
-                if (this.overlayViewer.showCenterlines) {
-                    button.html('<i class="fas fa-minus me-1"></i>隐藏中线');
-                    button.removeClass('btn-outline-info').addClass('btn-info');
-                } else {
-                    button.html('<i class="fas fa-minus me-1"></i>显示中线');
-                    button.removeClass('btn-info').addClass('btn-outline-info');
-                }
+            console.log('🖱️ 点击显示中线按钮');
+            console.log('   overlayViewer:', !!this.overlayViewer);
+            console.log('   toggleCenterlines方法:', typeof this.overlayViewer?.toggleCenterlines);
+            
+            if (!this.overlayViewer) {
+                console.error('❌ overlayViewer不存在');
+                Utils.showNotification('查看器未初始化', 'error');
+                return;
+            }
+            
+            if (!this.overlayViewer.toggleCenterlines) {
+                console.error('❌ toggleCenterlines方法不存在');
+                Utils.showNotification('功能不可用', 'error');
+                return;
+            }
+            
+            this.overlayViewer.toggleCenterlines();
+            
+            const button = $('#toggle-centerlines');
+            if (this.overlayViewer.showCenterlines) {
+                button.html('<i class="fas fa-minus me-1"></i>隐藏中线');
+                button.removeClass('btn-outline-info').addClass('btn-info');
+                console.log('✅ 中线已显示');
+            } else {
+                button.html('<i class="fas fa-minus me-1"></i>显示中线');
+                button.removeClass('btn-info').addClass('btn-outline-info');
+                console.log('✅ 中线已隐藏');
             }
         });
         
         // 对齐中线按钮
         $('#align-centerlines').on('click', () => {
-            if (this.overlayViewer) {
-                this.overlayViewer.alignCenterlines();
-                
-                // 自动显示中线（如果未显示）
-                if (!this.overlayViewer.showCenterlines) {
-                    $('#toggle-centerlines').click();
-                }
-                
-                Utils.showNotification('✅ 中线已对齐', 'success');
-                console.log('已对齐中线');
+            console.log('🖱️ 点击对齐中线按钮');
+            console.log('   overlayViewer:', !!this.overlayViewer);
+            console.log('   alignCenterlines方法:', typeof this.overlayViewer?.alignCenterlines);
+            
+            if (!this.overlayViewer) {
+                console.error('❌ overlayViewer不存在');
+                Utils.showNotification('查看器未初始化', 'error');
+                return;
             }
+            
+            if (!this.overlayViewer.alignCenterlines) {
+                console.error('❌ alignCenterlines方法不存在');
+                Utils.showNotification('功能不可用', 'error');
+                return;
+            }
+            
+            this.overlayViewer.alignCenterlines();
+            
+            // 自动显示中线（如果未显示）
+            if (!this.overlayViewer.showCenterlines) {
+                $('#toggle-centerlines').click();
+            }
+            
+            Utils.showNotification('✅ 中线已对齐', 'success');
+            console.log('✅ 已对齐中线');
         });
         
         // 锁定/解锁中线按钮
         $('#lock-centerlines').on('click', () => {
-            if (this.overlayViewer) {
-                const isLocked = this.overlayViewer.toggleCenterlineLock();
-                
-                const button = $('#lock-centerlines');
-                if (isLocked) {
-                    button.html('<i class="fas fa-lock me-1"></i>中线已锁定');
-                    button.removeClass('btn-outline-secondary').addClass('btn-secondary');
-                    Utils.showNotification('🔒 中线已锁定 - 只能沿中线方向移动和旋转', 'info');
-                } else {
-                    button.html('<i class="fas fa-unlock me-1"></i>锁定中线');
-                    button.removeClass('btn-secondary').addClass('btn-outline-secondary');
-                    Utils.showNotification('🔓 中线已解锁 - 恢复自由调整', 'info');
-                }
+            console.log('🖱️ 点击锁定中线按钮');
+            console.log('   overlayViewer:', !!this.overlayViewer);
+            console.log('   toggleCenterlineLock方法:', typeof this.overlayViewer?.toggleCenterlineLock);
+            
+            if (!this.overlayViewer) {
+                console.error('❌ overlayViewer不存在');
+                Utils.showNotification('查看器未初始化', 'error');
+                return;
+            }
+            
+            if (!this.overlayViewer.toggleCenterlineLock) {
+                console.error('❌ toggleCenterlineLock方法不存在');
+                Utils.showNotification('功能不可用', 'error');
+                return;
+            }
+            
+            const isLocked = this.overlayViewer.toggleCenterlineLock();
+            
+            const button = $('#lock-centerlines');
+            if (isLocked) {
+                button.html('<i class="fas fa-lock me-1"></i>中线已锁定');
+                button.removeClass('btn-outline-secondary').addClass('btn-secondary');
+                Utils.showNotification('🔒 中线已锁定 - 只能沿中线方向移动和旋转', 'info');
+                console.log('✅ 中线已锁定');
+            } else {
+                button.html('<i class="fas fa-unlock me-1"></i>锁定中线');
+                button.removeClass('btn-secondary').addClass('btn-outline-secondary');
+                Utils.showNotification('🔓 中线已解锁 - 恢复自由调整', 'info');
+                console.log('✅ 中线已解锁');
             }
         });
         
         console.log('已设置3D查看器工具栏');
+    }
+
+    /**
+     * 重置工具栏UI状态
+     * 
+     * 在切换预览图时调用，确保按钮状态与实际状态一致
+     */
+    resetViewerToolbarUI() {
+        // 1. 重置交互模式按钮
+        $('#viewer-mode-toolbar button').removeClass('active');
+        $('#viewer-mode-toolbar button[data-mode="view"]').addClass('active');
+        
+        // 2. 重置中线显示按钮
+        const toggleBtn = $('#toggle-centerlines');
+        if (toggleBtn.length) {
+            toggleBtn.html('<i class="fas fa-minus me-1"></i>显示中线');
+            toggleBtn.removeClass('btn-info').addClass('btn-outline-info');
+        }
+        
+        // 3. 重置锁定按钮
+        const lockBtn = $('#lock-centerlines');
+        if (lockBtn.length) {
+            lockBtn.html('<i class="fas fa-unlock me-1"></i>锁定中线');
+            lockBtn.removeClass('btn-secondary').addClass('btn-outline-secondary');
+        }
+        
+        // 4. 重置提示文字
+        $('#viewer-mode-hint').html('<i class="fas fa-info-circle me-1"></i>当前模式: <strong>查看模式</strong> - 左键旋转视图，滚轮缩放，右键平移相机');
+        
+        console.log('✅ 工具栏UI已重置到初始状态');
     }
 
     toggleHeatmapFullscreen() {

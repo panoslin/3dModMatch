@@ -73,6 +73,9 @@ class TransparentOverlayViewer {
      */
     async loadTransparentOverlay(taskId, resultIndex) {
         try {
+            // 重置所有中线相关状态（避免上一个预览的状态影响）
+            this.resetCenterlineStates();
+            
             // 显示加载提示
             this.showLoadingIndicator('正在加载透明叠加视图');
             
@@ -1326,6 +1329,55 @@ class TransparentOverlayViewer {
         // 中线已经是模型的子对象，会自动跟随移动和旋转
         // 无需每次都重新渲染
         // 除非需要重新计算PCA（例如模型变形时）
+    }
+
+    /**
+     * 重置中线相关的所有状态
+     * 
+     * 在切换到新的预览图时调用，确保干净的初始状态
+     */
+    resetCenterlineStates() {
+        console.log('🔄 重置中线状态...');
+        
+        // 1. 强制移除所有中线对象（包括可能残留在场景中的）
+        this.removeCenterlines();
+        
+        // 额外清理：从场景中查找并移除所有名为centerline的对象
+        if (this.viewer && this.viewer.scene) {
+            const toRemove = [];
+            this.viewer.scene.traverse((child) => {
+                if (child.name && child.name.includes('centerline')) {
+                    toRemove.push(child);
+                }
+            });
+            toRemove.forEach(obj => {
+                if (obj.parent) {
+                    obj.parent.remove(obj);
+                }
+            });
+            if (toRemove.length > 0) {
+                console.log(`🧹 清理了 ${toRemove.length} 个残留的中线对象`);
+            }
+        }
+        
+        // 2. 重置状态标志
+        this.showCenterlines = false;
+        this.centerlineLocked = false;
+        this.lockedCenterlineDirection = null;
+        
+        // 3. 重置中线对象引用
+        this.targetCenterline = null;
+        this.candidateCenterline = null;
+        
+        // 4. 重置交互模式为查看模式
+        this.interactionMode = 'view';
+        
+        // 5. 如果OrbitControls存在，确保启用
+        if (this.viewer && this.viewer.controls) {
+            this.viewer.controls.enabled = true;
+        }
+        
+        console.log('✅ 中线状态已彻底重置');
     }
 }
 
