@@ -3203,12 +3203,12 @@ class MatchingApp {
                                         <div class="mb-2">
                                             <span id="current-upload-info">准备上传...</span>
                                         </div>
-                                        <div class="progress mb-2">
-                                            <div class="progress-bar" id="upload-progress-bar" role="progressbar" 
-                                                 style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
-                                                0%
-                                            </div>
-                                        </div>
+                                         <div class="progress mb-2">
+                                             <div class="progress-bar bg-info progress-bar-striped progress-bar-animated" id="upload-progress-bar" role="progressbar" 
+                                                  style="width: 0%; height: 100%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                                                 0%
+                                             </div>
+                                         </div>
                                         <div class="d-flex justify-content-between">
                                             <small class="text-muted">
                                                 成功: <span id="upload-success-count">0</span> | 
@@ -3726,16 +3726,39 @@ class MatchingApp {
         $('#blank-count').text(blanks ? blanks.length : 0);
     }
     
-    filterBlanksByCategory(categoryId, allBlanks) {
-        const filteredBlanks = allBlanks.filter(blank => 
-            blank.categories_data.some(cat => cat.id === categoryId)
-        );
+    async filterBlanksByCategory(categoryId, allBlanks) {
+        // 修复：重新请求API而不是从缓存筛选（解决分页导致的显示不全问题）
+        console.log(`筛选分类 ${categoryId} 的粗胚 - 重新请求API`);
         
-        this.renderBlankList(filteredBlanks);
+        // 显示加载状态
+        $('#blank-list').html(`
+            <div class="text-center py-3">
+                <i class="fas fa-spinner fa-spin"></i>
+                <br>加载中...
+            </div>
+        `);
         
-        // 高亮选中的分类
-        $('.category-item').removeClass('bg-primary text-white');
-        $(`.category-item[data-category-id="${categoryId}"]`).addClass('bg-primary text-white');
+        try {
+            // 重新请求该分类的数据（带category_id参数，避免分页问题）
+            const response = await Utils.apiRequest(`/api/blanks/?category_id=${categoryId}&page_size=100`);
+            const blanks = response.results || response.data || [];
+            
+            console.log(`分类 ${categoryId} 返回 ${blanks.length} 个粗胚`);
+            this.renderBlankList(blanks);
+            
+            // 高亮选中的分类
+            $('.category-item').removeClass('bg-primary text-white');
+            $(`.category-item[data-category-id="${categoryId}"]`).addClass('bg-primary text-white');
+            
+        } catch (error) {
+            console.error('加载分类粗胚失败:', error);
+            $('#blank-list').html(`
+                <div class="alert alert-danger text-center">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    加载失败: ${error.message}
+                </div>
+            `);
+        }
     }
     
     async previewBlank(blankId) {

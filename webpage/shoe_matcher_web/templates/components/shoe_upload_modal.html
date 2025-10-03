@@ -45,8 +45,14 @@
                                     </div>
                                     
                                     <!-- 上传进度 -->
-                                    <div class="progress mt-3" id="shoe-progress" style="display: none;">
-                                        <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                                    <div class="mt-3" id="shoe-progress" style="display: none;">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <small class="text-muted">上传进度</small>
+                                            <span class="badge bg-primary" id="shoe-upload-percentage">0%</span>
+                                        </div>
+                                        <div class="progress" style="height: 20px;">
+                                            <div class="progress-bar bg-primary progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%; height: 100%;"></div>
+                                        </div>
                                     </div>
                                     
                                     <!-- 单文件信息（向后兼容） -->
