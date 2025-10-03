@@ -85,6 +85,30 @@ class MatchingTask(BaseModel):
         verbose_name="候选粗胚总数"
     )
     
+    # 用户选择（人工决策）
+    user_selected_blank = models.CharField(
+        max_length=500,
+        blank=True,
+        verbose_name="用户选择的粗胚",
+        help_text="用户最终选择的粗胚文件名"
+    )
+    user_selected_index = models.IntegerField(
+        null=True,
+        blank=True,
+        verbose_name="用户选择的索引",
+        help_text="用户选择的结果在results数组中的索引"
+    )
+    user_selected_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="用户选择时间"
+    )
+    user_selection_note = models.TextField(
+        blank=True,
+        verbose_name="选择备注",
+        help_text="用户选择此粗胚的原因或备注"
+    )
+    
     # 结果数据
     result_data = models.JSONField(
         default=dict, 

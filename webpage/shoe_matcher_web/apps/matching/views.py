@@ -191,7 +191,11 @@ def matching_result_api(request, task_id):
                 'threshold': task.threshold,
                 'parameters': parameters,
                 'results': task.result_data.get('results', []),
-                'summary': summary
+                'summary': summary,
+                # 用户选择信息
+                'user_selected_index': task.user_selected_index,
+                'user_selected_blank': task.user_selected_blank,
+                'user_selected_at': task.user_selected_at.isoformat() if task.user_selected_at else None
             }
         })
         
@@ -573,4 +577,116 @@ def _get_blank_file_path(result_data: dict) -> str:
     
     logger.error("无法找到粗胚文件")
     return None
+
+
+@api_view(['POST'])
+def select_best_match_api(request, task_id):
+    """
+    保存用户选择的最佳匹配结果
+    
+    请求体：
+    {
+        "result_index": 0,
+        "note": "用户备注（可选）"
+    }
+    """
+    try:
+        task = get_object_or_404(MatchingTask, task_id=task_id)
+        
+        # 检查任务是否完成
+        if task.status != 'completed':
+            return Response({
+                'success': False,
+                'error': 'task_not_completed',
+                'message': '只能为已完成的任务选择最佳匹配'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # 获取参数
+        result_index = request.data.get('result_index')
+        note = request.data.get('note', '')
+        
+        if result_index is None:
+            return Response({
+                'success': False,
+                'error': 'missing_index',
+                'message': '缺少result_index参数'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # 验证索引有效性
+        if not task.result_data or 'results' not in task.result_data:
+            return Response({
+                'success': False,
+                'error': 'no_results',
+                'message': '任务没有匹配结果'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        results = task.result_data['results']
+        if result_index < 0 or result_index >= len(results):
+            return Response({
+                'success': False,
+                'error': 'invalid_index',
+                'message': f'索引超出范围：0-{len(results)-1}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # 获取选择的结果
+        selected_result = results[result_index]
+        blank_name = selected_result.get('blank_name', '')
+        
+        # 保存用户选择
+        task.user_selected_blank = blank_name
+        task.user_selected_index = result_index
+        task.user_selected_at = timezone.now()
+        task.user_selection_note = note
+        task.save()
+        
+        logger.info(f"用户选择最佳匹配: 任务{task_id}, 粗胚{blank_name}, 索引{result_index}")
+        
+        return Response({
+            'success': True,
+            'message': f'已保存选择：{blank_name}',
+            'data': {
+                'blank_name': blank_name,
+                'result_index': result_index,
+                'selected_at': task.user_selected_at.isoformat(),
+                'algorithm_rank': result_index + 1,  # 算法排名（1-based）
+                'chamfer': selected_result.get('chamfer', 0),
+                'p15_clearance': selected_result.get('p15_clearance', 0),
+                'inside_ratio': selected_result.get('inside_ratio', 0)
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"保存用户选择失败: {e}")
+        return Response({
+            'success': False,
+            'error': 'save_failed',
+            'message': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['DELETE'])
+def clear_best_match_api(request, task_id):
+    """清除用户选择的最佳匹配"""
+    try:
+        task = get_object_or_404(MatchingTask, task_id=task_id)
+        
+        task.user_selected_blank = ''
+        task.user_selected_index = None
+        task.user_selected_at = None
+        task.user_selection_note = ''
+        task.save()
+        
+        logger.info(f"清除用户选择: 任务{task_id}")
+        
+        return Response({
+            'success': True,
+            'message': '已清除选择'
+        })
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': 'clear_failed',
+            'message': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

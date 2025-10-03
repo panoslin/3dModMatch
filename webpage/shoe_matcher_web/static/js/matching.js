@@ -846,6 +846,14 @@ class MatchingApp {
         // 预加载粗胚GLB模型（后台进行，不阻塞UI）
         this.preloadBlankGLBs(data.results);
         
+        // 检查并标记用户已选择的结果
+        if (data.user_selected_index !== null && data.user_selected_index !== undefined) {
+            setTimeout(() => {
+                this.markSelectedBest(data.user_selected_index);
+                console.log(`✓ 恢复用户选择: 索引${data.user_selected_index}`);
+            }, 100);
+        }
+        
         Utils.showNotification('匹配完成！', 'success');
     }
     
@@ -948,9 +956,17 @@ class MatchingApp {
                     </td>
                     <td>${chamferBadge}</td>
                     <td>
-                        <button class="btn btn-sm btn-outline-primary" onclick="matchingApp.showResultDetail(${index})">
-                            <i class="fas fa-eye"></i> 详情
-                        </button>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button class="btn btn-outline-primary" onclick="matchingApp.showResultDetail(${index})" title="查看详细数据和3D预览">
+                                <i class="fas fa-eye"></i> 详情
+                            </button>
+                            <button class="btn btn-outline-success select-best-btn" 
+                                    onclick="matchingApp.selectAsBest(${index})" 
+                                    data-index="${index}"
+                                    title="选择此粗胚为最终匹配结果">
+                                <i class="fas fa-star"></i> 选为最佳
+                            </button>
+                        </div>
                     </td>
                 </tr>
             `);
@@ -971,6 +987,73 @@ class MatchingApp {
         $('[data-bs-toggle="tooltip"]').each(function() {
             new bootstrap.Tooltip(this);
         });
+    }
+    
+    /**
+     * 选择某个结果为最佳匹配
+     * 
+     * @param {number} index - 结果索引
+     */
+    async selectAsBest(index) {
+        if (!this.currentTask || !this.currentTask.task_id) {
+            Utils.showNotification('无法获取任务信息', 'error');
+            return;
+        }
+        
+        try {
+            // 发送API请求
+            const response = await Utils.apiRequest(
+                `/api/matching/${this.currentTask.task_id}/select-best/`,
+                {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        result_index: index
+                    })
+                }
+            );
+            
+            if (response.success) {
+                const data = response.data;
+                Utils.showNotification(
+                    `✅ 已选择「${data.blank_name}」为最佳匹配 (算法排名第${data.algorithm_rank}位)`,
+                    'success'
+                );
+                
+                // 更新UI显示
+                this.markSelectedBest(index);
+                
+                // 保存选择信息到本地状态
+                this.currentTask.userSelectedIndex = index;
+                this.currentTask.userSelectedBlank = data.blank_name;
+            } else {
+                Utils.showNotification('保存失败: ' + response.message, 'error');
+            }
+            
+        } catch (error) {
+            Utils.showNotification('保存失败: ' + error.message, 'error');
+        }
+    }
+    
+    /**
+     * 标记用户选择的最佳结果
+     * 
+     * @param {number} selectedIndex - 选中的索引
+     */
+    markSelectedBest(selectedIndex) {
+        // 移除所有选中标记
+        $('.select-best-btn').each(function() {
+            $(this).removeClass('btn-success active').addClass('btn-outline-success');
+            $(this).html('<i class="fas fa-star"></i> 选为最佳');
+        });
+        
+        // 标记选中的项
+        const selectedBtn = $(`.select-best-btn[data-index="${selectedIndex}"]`);
+        selectedBtn.removeClass('btn-outline-success').addClass('btn-success active');
+        selectedBtn.html('<i class="fas fa-star"></i> ✓ 已选择');
+        
+        // 为选中的行添加高亮
+        $(`tr[data-result-index]`).removeClass('table-success');
+        $(`tr[data-result-index="${selectedIndex}"]`).addClass('table-success');
     }
     
     /**

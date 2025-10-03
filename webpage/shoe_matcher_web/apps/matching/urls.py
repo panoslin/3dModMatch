@@ -18,4 +18,12 @@ urlpatterns = [
     path('<str:task_id>/alignment-data/<int:result_index>/', 
          views.get_alignment_data_api, 
          name='get_alignment_data'),
+    
+    # 用户选择最佳匹配
+    path('<str:task_id>/select-best/', 
+         views.select_best_match_api, 
+         name='select_best_match'),
+    path('<str:task_id>/clear-selection/', 
+         views.clear_best_match_api, 
+         name='clear_best_match'),
 ]
