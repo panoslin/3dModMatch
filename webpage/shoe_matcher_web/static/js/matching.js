@@ -4434,6 +4434,55 @@ class MatchingApp {
             }
         });
         
+        // 显示/隐藏中线按钮
+        $('#toggle-centerlines').on('click', () => {
+            if (this.overlayViewer) {
+                this.overlayViewer.toggleCenterlines();
+                
+                const button = $('#toggle-centerlines');
+                if (this.overlayViewer.showCenterlines) {
+                    button.html('<i class="fas fa-minus me-1"></i>隐藏中线');
+                    button.removeClass('btn-outline-info').addClass('btn-info');
+                } else {
+                    button.html('<i class="fas fa-minus me-1"></i>显示中线');
+                    button.removeClass('btn-info').addClass('btn-outline-info');
+                }
+            }
+        });
+        
+        // 对齐中线按钮
+        $('#align-centerlines').on('click', () => {
+            if (this.overlayViewer) {
+                this.overlayViewer.alignCenterlines();
+                
+                // 自动显示中线（如果未显示）
+                if (!this.overlayViewer.showCenterlines) {
+                    $('#toggle-centerlines').click();
+                }
+                
+                Utils.showNotification('✅ 中线已对齐', 'success');
+                console.log('已对齐中线');
+            }
+        });
+        
+        // 锁定/解锁中线按钮
+        $('#lock-centerlines').on('click', () => {
+            if (this.overlayViewer) {
+                const isLocked = this.overlayViewer.toggleCenterlineLock();
+                
+                const button = $('#lock-centerlines');
+                if (isLocked) {
+                    button.html('<i class="fas fa-lock me-1"></i>中线已锁定');
+                    button.removeClass('btn-outline-secondary').addClass('btn-secondary');
+                    Utils.showNotification('🔒 中线已锁定 - 只能沿中线方向移动和旋转', 'info');
+                } else {
+                    button.html('<i class="fas fa-unlock me-1"></i>锁定中线');
+                    button.removeClass('btn-secondary').addClass('btn-outline-secondary');
+                    Utils.showNotification('🔓 中线已解锁 - 恢复自由调整', 'info');
+                }
+            }
+        });
+        
         console.log('已设置3D查看器工具栏');
     }
 

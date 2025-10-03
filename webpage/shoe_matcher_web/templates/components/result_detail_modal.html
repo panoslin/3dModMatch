@@ -211,9 +211,20 @@
                                             <i class="fas fa-sync-alt me-1"></i>旋转鞋模
                                         </button>
                                     </div>
-                                    <button type="button" class="btn btn-sm btn-outline-warning ms-auto" id="reset-shoe-transform" title="恢复到原始对齐位置">
-                                        <i class="fas fa-undo me-1"></i>重置位置
-                                    </button>
+                                    <div class="btn-group btn-group-sm ms-auto" role="group">
+                                        <button type="button" class="btn btn-outline-info" id="toggle-centerlines" title="显示/隐藏中线">
+                                            <i class="fas fa-minus me-1"></i>显示中线
+                                        </button>
+                                        <button type="button" class="btn btn-outline-primary" id="align-centerlines" title="基于中线对齐鞋模和粗胚">
+                                            <i class="fas fa-compress-arrows-alt me-1"></i>对齐中线
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary" id="lock-centerlines" title="锁定中线对齐，保持鞋模沿中线移动和旋转">
+                                            <i class="fas fa-unlock me-1"></i>锁定中线
+                                        </button>
+                                        <button type="button" class="btn btn-outline-warning" id="reset-shoe-transform" title="恢复到原始对齐位置">
+                                            <i class="fas fa-undo me-1"></i>重置
+                                        </button>
+                                    </div>
                                 </div>
                                 <div class="mt-2">
                                     <small class="text-muted" id="viewer-mode-hint">

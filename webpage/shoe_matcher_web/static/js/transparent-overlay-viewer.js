@@ -50,6 +50,13 @@ class TransparentOverlayViewer {
         this.isDragging = false;
         this.previousMouse = { x: 0, y: 0 };
         
+        // 中线显示
+        this.showCenterlines = false;
+        this.targetCenterline = null;   // 鞋模中线
+        this.candidateCenterline = null; // 粗胚中线
+        this.centerlineLocked = false;  // 中线是否锁定
+        this.lockedCenterlineDirection = null;  // 锁定的中线方向
+        
         // 绑定事件处理器
         this.boundMouseDown = this.onMouseDown.bind(this);
         this.boundMouseMove = this.onMouseMove.bind(this);
@@ -534,50 +541,6 @@ class TransparentOverlayViewer {
         this.isDragging = false;
     }
 
-    /**
-     * 平移鞋模
-     */
-    translateShoe(deltaX, deltaY) {
-        if (!this.targetModel || !this.viewer.camera) return;
-        
-        const camera = this.viewer.camera;
-        const container = this.viewer.renderer.domElement;
-        
-        // 计算移动敏感度（根据相机距离和容器大小）
-        const distance = camera.position.length();
-        const sensitivity = distance / container.clientHeight * 2;
-        
-        // 获取相机的右向量和上向量
-        const right = new THREE.Vector3();
-        const up = new THREE.Vector3();
-        
-        camera.getWorldDirection(right);
-        right.cross(camera.up).normalize();
-        up.copy(camera.up).normalize();
-        
-        // 计算移动向量
-        const moveX = right.multiplyScalar(deltaX * sensitivity);
-        const moveY = up.multiplyScalar(-deltaY * sensitivity);
-        
-        // 应用移动
-        this.targetModel.position.add(moveX);
-        this.targetModel.position.add(moveY);
-    }
-
-    /**
-     * 旋转鞋模
-     */
-    rotateShoe(deltaX, deltaY) {
-        if (!this.targetModel || !this.viewer.camera) return;
-        
-        const sensitivity = 0.005; // 旋转敏感度
-        
-        // 绕 Y 轴旋转（水平拖拽）
-        this.targetModel.rotation.y += deltaX * sensitivity;
-        
-        // 绕 X 轴旋转（垂直拖拽）
-        this.targetModel.rotation.x += deltaY * sensitivity;
-    }
 
     /**
      * 键盘按下事件
@@ -610,113 +573,163 @@ class TransparentOverlayViewer {
     handleKeyboardTranslate(key, multiplier = 1) {
         if (!this.targetModel || !this.viewer.camera) return;
         
-        const camera = this.viewer.camera;
-        const stepSize = this.keyboardStepSize * multiplier;  // 基础步长 × 倍数
+        const stepSize = this.keyboardStepSize * multiplier;
         
-        // 获取相机的右向量和上向量（当前视图的平面坐标系）
-        const right = new THREE.Vector3();
-        const up = new THREE.Vector3();
-        
-        camera.getWorldDirection(right);
-        right.cross(camera.up).normalize();  // 右向量 = 前向量 × 上向量
-        up.copy(camera.up).normalize();      // 上向量
-        
-        // 根据按键方向计算移动向量
-        let moveVector = new THREE.Vector3();
-        
-        switch(key) {
-            case 'ArrowLeft':   // 向左移动
-                moveVector = right.multiplyScalar(-stepSize);
-                break;
-            case 'ArrowRight':  // 向右移动
-                moveVector = right.multiplyScalar(stepSize);
-                break;
-            case 'ArrowUp':     // 向上移动
-                moveVector = up.multiplyScalar(stepSize);
-                break;
-            case 'ArrowDown':   // 向下移动
-                moveVector = up.multiplyScalar(-stepSize);
-                break;
+        if (this.centerlineLocked && this.lockedCenterlineDirection) {
+            // 锁定模式：只允许沿中线方向移动
+            let moveDir = 0;
+            
+            switch(key) {
+                case 'ArrowLeft':
+                case 'ArrowDown':
+                    moveDir = -1;  // 向后（沿中线负方向）
+                    break;
+                case 'ArrowRight':
+                case 'ArrowUp':
+                    moveDir = 1;   // 向前（沿中线正方向）
+                    break;
+            }
+            
+            const moveVector = this.lockedCenterlineDirection.clone().multiplyScalar(
+                moveDir * stepSize
+            );
+            
+            this.targetModel.position.add(moveVector);
+            
+            const directionText = moveDir > 0 ? '前' : '后';
+            console.log(`⌨️ 🔒锁定平移: 沿中线向${directionText} ${stepSize.toFixed(1)}mm`);
+        } else {
+            // 正常模式：相对于相机平面移动
+            const camera = this.viewer.camera;
+            const right = new THREE.Vector3();
+            const up = new THREE.Vector3();
+            
+            camera.getWorldDirection(right);
+            right.cross(camera.up).normalize();
+            up.copy(camera.up).normalize();
+            
+            let moveVector = new THREE.Vector3();
+            
+            switch(key) {
+                case 'ArrowLeft':
+                    moveVector = right.multiplyScalar(-stepSize);
+                    break;
+                case 'ArrowRight':
+                    moveVector = right.multiplyScalar(stepSize);
+                    break;
+                case 'ArrowUp':
+                    moveVector = up.multiplyScalar(stepSize);
+                    break;
+                case 'ArrowDown':
+                    moveVector = up.multiplyScalar(-stepSize);
+                    break;
+            }
+            
+            this.targetModel.position.add(moveVector);
+            
+            const direction = {
+                'ArrowLeft': '左',
+                'ArrowRight': '右',
+                'ArrowUp': '上',
+                'ArrowDown': '下'
+            }[key];
+            console.log(`⌨️ 平移: ${direction} ${stepSize.toFixed(1)}mm`);
         }
         
-        // 应用移动
-        this.targetModel.position.add(moveVector);
-        
-        // 可选：显示提示
-        const direction = {
-            'ArrowLeft': '左',
-            'ArrowRight': '右',
-            'ArrowUp': '上',
-            'ArrowDown': '下'
-        }[key];
-        console.log(`⌨️ 平移: ${direction} ${stepSize.toFixed(1)}mm`);
+        // 更新中线显示（实时更新，避免重新计算PCA）
+        this.updateCenterlinePositions();
     }
 
     /**
-     * 键盘旋转控制（相对于当前视图）
+     * 键盘旋转控制（相对于当前视图，锁定时绕中线）
      */
     handleKeyboardRotate(key, multiplier = 1) {
         if (!this.targetModel || !this.viewer.camera) return;
         
-        const camera = this.viewer.camera;
         const rotationStep = this.keyboardRotationStep * multiplier;
         const degrees = (rotationStep * 180 / Math.PI).toFixed(1);
         
-        // 获取相机的坐标系向量
-        const cameraDirection = new THREE.Vector3();
-        camera.getWorldDirection(cameraDirection);  // 相机朝向（Z轴）
-        
-        const right = new THREE.Vector3();
-        right.crossVectors(cameraDirection, camera.up).normalize();  // 右向量（屏幕X轴）
-        
-        const up = camera.up.clone().normalize();  // 上向量（屏幕Y轴）
-        
-        // 创建旋转轴和旋转矩阵
-        let rotationAxis;
-        let rotationAngle;
-        let description;
-        
-        switch(key) {
-            case 'ArrowLeft':   // 绕相机上向量旋转（屏幕垂直轴）- 向左转
-                rotationAxis = up;
-                rotationAngle = rotationStep;
-                description = `绕视图垂直轴: +${degrees}° (向左转)`;
-                break;
-            case 'ArrowRight':  // 绕相机上向量旋转 - 向右转
-                rotationAxis = up;
-                rotationAngle = -rotationStep;
-                description = `绕视图垂直轴: -${degrees}° (向右转)`;
-                break;
-            case 'ArrowUp':     // 绕相机右向量旋转（屏幕水平轴）- 向后仰
-                rotationAxis = right;
-                rotationAngle = rotationStep;
-                description = `绕视图水平轴: +${degrees}° (后仰)`;
-                break;
-            case 'ArrowDown':   // 绕相机右向量旋转 - 向前倾
-                rotationAxis = right;
-                rotationAngle = -rotationStep;
-                description = `绕视图水平轴: -${degrees}° (前倾)`;
-                break;
-        }
-        
-        // 应用旋转（绕世界坐标系中的任意轴旋转）
-        if (rotationAxis && rotationAngle !== undefined) {
-            // 将旋转轴转换到模型的局部坐标系
-            const modelWorldQuaternion = this.targetModel.getWorldQuaternion(new THREE.Quaternion());
-            const inverseModelQuaternion = modelWorldQuaternion.clone().invert();
+        if (this.centerlineLocked && this.lockedCenterlineDirection) {
+            // 锁定模式：只允许绕中线旋转
+            let rotationAngle = 0;
             
-            // 在世界坐标系中创建旋转
+            switch(key) {
+                case 'ArrowLeft':
+                case 'ArrowDown':
+                    rotationAngle = -rotationStep;  // 逆时针
+                    break;
+                case 'ArrowRight':
+                case 'ArrowUp':
+                    rotationAngle = rotationStep;   // 顺时针
+                    break;
+            }
+            
+            // 绕中线旋转
             const rotationQuaternion = new THREE.Quaternion();
-            rotationQuaternion.setFromAxisAngle(rotationAxis, rotationAngle);
+            rotationQuaternion.setFromAxisAngle(
+                this.lockedCenterlineDirection,
+                rotationAngle
+            );
             
-            // 应用旋转到模型
             this.targetModel.quaternion.multiplyQuaternions(
                 rotationQuaternion,
                 this.targetModel.quaternion
             );
             
-            console.log(`⌨️ ${description}`);
+            const directionText = rotationAngle > 0 ? '顺时针' : '逆时针';
+            console.log(`⌨️ 🔒锁定旋转: 绕中线${directionText} ${degrees}°`);
+        } else {
+            // 正常模式：相对于视图旋转
+            const camera = this.viewer.camera;
+            const cameraDirection = new THREE.Vector3();
+            camera.getWorldDirection(cameraDirection);
+            
+            const right = new THREE.Vector3();
+            right.crossVectors(cameraDirection, camera.up).normalize();
+            const up = camera.up.clone().normalize();
+            
+            let rotationAxis;
+            let rotationAngle;
+            let description;
+            
+            switch(key) {
+                case 'ArrowLeft':
+                    rotationAxis = up;
+                    rotationAngle = rotationStep;
+                    description = `绕视图垂直轴: +${degrees}° (向左转)`;
+                    break;
+                case 'ArrowRight':
+                    rotationAxis = up;
+                    rotationAngle = -rotationStep;
+                    description = `绕视图垂直轴: -${degrees}° (向右转)`;
+                    break;
+                case 'ArrowUp':
+                    rotationAxis = right;
+                    rotationAngle = rotationStep;
+                    description = `绕视图水平轴: +${degrees}° (后仰)`;
+                    break;
+                case 'ArrowDown':
+                    rotationAxis = right;
+                    rotationAngle = -rotationStep;
+                    description = `绕视图水平轴: -${degrees}° (前倾)`;
+                    break;
+            }
+            
+            if (rotationAxis && rotationAngle !== undefined) {
+                const rotationQuaternion = new THREE.Quaternion();
+                rotationQuaternion.setFromAxisAngle(rotationAxis, rotationAngle);
+                
+                this.targetModel.quaternion.multiplyQuaternions(
+                    rotationQuaternion,
+                    this.targetModel.quaternion
+                );
+                
+                console.log(`⌨️ ${description}`);
+            }
         }
+        
+        // 更新中线显示（实时更新）
+        this.updateCenterlinePositions();
     }
 
     /**
@@ -733,6 +746,586 @@ class TransparentOverlayViewer {
         this.targetModel.quaternion.copy(this.originalShoeTransform.quaternion);
         
         console.log('已重置鞋模到原始位置');
+    }
+
+    /**
+     * 计算模型的PCA主轴（中线）
+     */
+    computePCAAxis(model) {
+        if (!model || !model.geometry) return null;
+        
+        const positions = model.geometry.attributes.position.array;
+        const count = positions.length / 3;
+        
+        // 1. 计算中心点
+        let centerX = 0, centerY = 0, centerZ = 0;
+        for (let i = 0; i < count; i++) {
+            centerX += positions[i * 3];
+            centerY += positions[i * 3 + 1];
+            centerZ += positions[i * 3 + 2];
+        }
+        centerX /= count;
+        centerY /= count;
+        centerZ /= count;
+        
+        const center = new THREE.Vector3(centerX, centerY, centerZ);
+        
+        // 2. 计算协方差矩阵
+        let cov = [
+            [0, 0, 0],
+            [0, 0, 0],
+            [0, 0, 0]
+        ];
+        
+        for (let i = 0; i < count; i++) {
+            const dx = positions[i * 3] - centerX;
+            const dy = positions[i * 3 + 1] - centerY;
+            const dz = positions[i * 3 + 2] - centerZ;
+            
+            cov[0][0] += dx * dx;
+            cov[0][1] += dx * dy;
+            cov[0][2] += dx * dz;
+            cov[1][1] += dy * dy;
+            cov[1][2] += dy * dz;
+            cov[2][2] += dz * dz;
+        }
+        
+        cov[1][0] = cov[0][1];
+        cov[2][0] = cov[0][2];
+        cov[2][1] = cov[1][2];
+        
+        for (let i = 0; i < 3; i++) {
+            for (let j = 0; j < 3; j++) {
+                cov[i][j] /= count;
+            }
+        }
+        
+        // 3. 简化的特征向量计算（使用迭代方法找主方向）
+        // 对于鞋模，主轴通常是X方向（长度方向）
+        const mainAxis = this.findPrincipalAxis(positions, center, count);
+        
+        return {
+            center: center,
+            direction: mainAxis,
+            length: this.estimateAxisLength(positions, center, mainAxis, count)
+        };
+    }
+
+    /**
+     * 找到主轴方向（简化的幂迭代法）
+     */
+    findPrincipalAxis(positions, center, count) {
+        // 初始猜测：X轴方向
+        let v = new THREE.Vector3(1, 0, 0);
+        
+        // 幂迭代10次
+        for (let iter = 0; iter < 10; iter++) {
+            let newV = new THREE.Vector3(0, 0, 0);
+            
+            for (let i = 0; i < count; i++) {
+                const dx = positions[i * 3] - center.x;
+                const dy = positions[i * 3 + 1] - center.y;
+                const dz = positions[i * 3 + 2] - center.z;
+                
+                const dot = dx * v.x + dy * v.y + dz * v.z;
+                newV.x += dx * dot;
+                newV.y += dy * dot;
+                newV.z += dz * dot;
+            }
+            
+            newV.normalize();
+            v = newV;
+        }
+        
+        return v;
+    }
+
+    /**
+     * 估算轴长度（沿主轴方向的跨度）
+     */
+    estimateAxisLength(positions, center, axis, count) {
+        let minProj = Infinity;
+        let maxProj = -Infinity;
+        
+        for (let i = 0; i < count; i++) {
+            const dx = positions[i * 3] - center.x;
+            const dy = positions[i * 3 + 1] - center.y;
+            const dz = positions[i * 3 + 2] - center.z;
+            
+            const proj = dx * axis.x + dy * axis.y + dz * axis.z;
+            minProj = Math.min(minProj, proj);
+            maxProj = Math.max(maxProj, proj);
+        }
+        
+        return maxProj - minProj;
+    }
+
+    /**
+     * 显示/隐藏中线
+     */
+    toggleCenterlines() {
+        this.showCenterlines = !this.showCenterlines;
+        
+        if (this.showCenterlines) {
+            this.renderCenterlines();
+        } else {
+            this.removeCenterlines();
+        }
+    }
+
+    /**
+     * 渲染中线（作为模型的子对象，自动跟随）
+     */
+    renderCenterlines() {
+        console.log('🔍 开始渲染中线...');
+        
+        if (!this.targetModel || !this.candidateModel) {
+            console.error('❌ 模型未加载:', {
+                targetModel: !!this.targetModel,
+                candidateModel: !!this.candidateModel
+            });
+            return;
+        }
+        
+        console.log('✅ 模型已加载，开始计算PCA...');
+        
+        // 移除旧的中线
+        this.removeCenterlines();
+        
+        // 计算鞋模中线（在局部坐标系中）
+        const targetPCA = this.computePCAAxisLocal(this.targetModel);
+        console.log('鞋模PCA:', targetPCA);
+        
+        if (targetPCA) {
+            const start = targetPCA.direction.clone().multiplyScalar(-targetPCA.length / 2);
+            const end = targetPCA.direction.clone().multiplyScalar(targetPCA.length / 2);
+            
+            console.log('鞋模中线（局部坐标）:', { start, end });
+            
+            this.targetCenterline = this.createCenterline(start, end, 0xff0000); // 红色
+            this.targetCenterline.name = 'target-centerline';
+            
+            // 作为鞋模的子对象添加，这样会自动跟随鞋模移动
+            this.targetModel.add(this.targetCenterline);
+            console.log('✅ 鞋模中线已作为子对象添加');
+        } else {
+            console.error('❌ 无法计算鞋模PCA');
+        }
+        
+        // 计算粗胚中线（在局部坐标系中）
+        const candidatePCA = this.computePCAAxisLocal(this.candidateModel);
+        console.log('粗胚PCA:', candidatePCA);
+        
+        if (candidatePCA) {
+            const start = candidatePCA.direction.clone().multiplyScalar(-candidatePCA.length / 2);
+            const end = candidatePCA.direction.clone().multiplyScalar(candidatePCA.length / 2);
+            
+            console.log('粗胚中线（局部坐标）:', { start, end });
+            
+            this.candidateCenterline = this.createCenterline(start, end, 0x00ff00); // 绿色
+            this.candidateCenterline.name = 'candidate-centerline';
+            
+            // 作为粗胚的子对象添加
+            this.candidateModel.add(this.candidateCenterline);
+            console.log('✅ 粗胚中线已作为子对象添加');
+        } else {
+            console.error('❌ 无法计算粗胚PCA');
+        }
+        
+        console.log('✅ 中线已显示: 鞋模(红色), 粗胚(绿色)');
+    }
+    
+    /**
+     * 计算模型的PCA主轴（局部坐标系）
+     */
+    computePCAAxisLocal(model) {
+        if (!model || !model.geometry) return null;
+        
+        const positions = model.geometry.attributes.position.array;
+        const count = positions.length / 3;
+        
+        // 在局部坐标系中计算（顶点已经是局部坐标）
+        // 计算中心点
+        let centerX = 0, centerY = 0, centerZ = 0;
+        for (let i = 0; i < count; i++) {
+            centerX += positions[i * 3];
+            centerY += positions[i * 3 + 1];
+            centerZ += positions[i * 3 + 2];
+        }
+        centerX /= count;
+        centerY /= count;
+        centerZ /= count;
+        
+        const center = new THREE.Vector3(centerX, centerY, centerZ);
+        
+        // 找到主轴方向
+        const mainAxis = this.findPrincipalAxisFromPositions(positions, center, count);
+        const length = this.estimateAxisLength(positions, center, mainAxis, count);
+        
+        return {
+            center: center,      // 局部坐标系中的中心
+            direction: mainAxis, // 局部坐标系中的方向
+            length: length * 1.5 // 延长50%
+        };
+    }
+    
+    /**
+     * 从顶点数组找主轴方向
+     */
+    findPrincipalAxisFromPositions(positions, center, count) {
+        let v = new THREE.Vector3(1, 0, 0);
+        
+        for (let iter = 0; iter < 10; iter++) {
+            let newV = new THREE.Vector3(0, 0, 0);
+            
+            for (let i = 0; i < count; i++) {
+                const dx = positions[i * 3] - center.x;
+                const dy = positions[i * 3 + 1] - center.y;
+                const dz = positions[i * 3 + 2] - center.z;
+                
+                const dot = dx * v.x + dy * v.y + dz * v.z;
+                newV.x += dx * dot;
+                newV.y += dy * dot;
+                newV.z += dz * dot;
+            }
+            
+            newV.normalize();
+            v = newV;
+        }
+        
+        return v;
+    }
+
+    /**
+     * 创建中线对象（粗线条）
+     */
+    createCenterline(start, end, color) {
+        // 延长中线，使其更容易看到
+        const direction = end.clone().sub(start).normalize();
+        const length = end.distanceTo(start);
+        const extendedLength = length * 1.5;  // 延长50%
+        
+        const extendedStart = start.clone().sub(direction.clone().multiplyScalar(length * 0.25));
+        const extendedEnd = end.clone().add(direction.clone().multiplyScalar(length * 0.25));
+        
+        // 使用圆柱体创建粗线条（而不是LineBasicMaterial）
+        const cylinderLength = extendedStart.distanceTo(extendedEnd);
+        const cylinderGeometry = new THREE.CylinderGeometry(
+            1.5,  // 顶部半径（1.5mm，明显可见）
+            1.5,  // 底部半径
+            cylinderLength,  // 长度
+            8,    // 圆周分段
+            1     // 高度分段
+        );
+        
+        const material = new THREE.MeshBasicMaterial({
+            color: color,
+            depthTest: true,
+            transparent: false
+        });
+        
+        const cylinder = new THREE.Mesh(cylinderGeometry, material);
+        
+        // 设置位置和方向
+        const midpoint = extendedStart.clone().add(extendedEnd).multiplyScalar(0.5);
+        cylinder.position.copy(midpoint);
+        
+        // 对齐圆柱体方向
+        const up = new THREE.Vector3(0, 1, 0);
+        const quaternion = new THREE.Quaternion();
+        quaternion.setFromUnitVectors(up, direction);
+        cylinder.quaternion.copy(quaternion);
+        
+        console.log(`创建中线: 长度=${cylinderLength.toFixed(1)}mm, 半径=1.5mm`);
+        
+        return cylinder;
+    }
+
+    /**
+     * 移除中线
+     */
+    removeCenterlines() {
+        if (this.targetCenterline) {
+            // 从鞋模子对象中移除
+            if (this.targetModel) {
+                this.targetModel.remove(this.targetCenterline);
+            }
+            this.targetCenterline = null;
+        }
+        if (this.candidateCenterline) {
+            // 从粗胚子对象中移除
+            if (this.candidateModel) {
+                this.candidateModel.remove(this.candidateCenterline);
+            }
+            this.candidateCenterline = null;
+        }
+    }
+
+    /**
+     * 对齐中线（在全局坐标系中进行）
+     */
+    alignCenterlines() {
+        if (!this.targetModel || !this.candidateModel) {
+            console.warn('无法对齐中线: 模型未加载');
+            return;
+        }
+        
+        console.log('🔧 开始对齐中线...');
+        
+        // 计算全局坐标系中的PCA主轴
+        const targetPCA = this.computePCAAxisGlobal(this.targetModel);
+        const candidatePCA = this.computePCAAxisGlobal(this.candidateModel);
+        
+        console.log('鞋模全局PCA:', targetPCA);
+        console.log('粗胚全局PCA:', candidatePCA);
+        
+        if (!targetPCA || !candidatePCA) {
+            console.warn('无法计算主轴');
+            return;
+        }
+        
+        // 1. 计算中心偏移（粗胚中心 -> 鞋模要移动到的位置）
+        const centerOffset = candidatePCA.center.clone().sub(targetPCA.center);
+        console.log('中心偏移:', centerOffset);
+        
+        // 2. 计算方向对齐的旋转
+        const quaternion = new THREE.Quaternion();
+        quaternion.setFromUnitVectors(targetPCA.direction, candidatePCA.direction);
+        
+        console.log('旋转四元数:', quaternion);
+        
+        // 3. 先应用旋转（绕鞋模当前中心旋转）
+        const targetCenter = targetPCA.center.clone();
+        
+        // 将鞋模移到原点
+        this.targetModel.position.sub(targetCenter);
+        
+        // 应用旋转
+        this.targetModel.quaternion.premultiply(quaternion);
+        
+        // 移回原位置
+        this.targetModel.position.add(targetCenter);
+        
+        // 4. 再应用平移（对齐中心点）
+        this.targetModel.position.add(centerOffset);
+        
+        console.log('✅ 中线已对齐');
+        console.log(`   中心偏移: ${centerOffset.length().toFixed(2)}mm`);
+        console.log(`   新位置: ${this.targetModel.position.x.toFixed(1)}, ${this.targetModel.position.y.toFixed(1)}, ${this.targetModel.position.z.toFixed(1)}`);
+    }
+    
+    /**
+     * 计算模型的PCA主轴（全局坐标系）
+     */
+    computePCAAxisGlobal(model) {
+        if (!model || !model.geometry) return null;
+        
+        const positions = model.geometry.attributes.position.array;
+        const count = positions.length / 3;
+        
+        // 将局部坐标转换为全局坐标
+        const worldMatrix = model.matrixWorld;
+        
+        // 计算全局坐标中的中心点
+        let centerX = 0, centerY = 0, centerZ = 0;
+        const tempVec = new THREE.Vector3();
+        
+        for (let i = 0; i < count; i++) {
+            tempVec.set(
+                positions[i * 3],
+                positions[i * 3 + 1],
+                positions[i * 3 + 2]
+            );
+            tempVec.applyMatrix4(worldMatrix);
+            
+            centerX += tempVec.x;
+            centerY += tempVec.y;
+            centerZ += tempVec.z;
+        }
+        centerX /= count;
+        centerY /= count;
+        centerZ /= count;
+        
+        const globalCenter = new THREE.Vector3(centerX, centerY, centerZ);
+        
+        // 在全局坐标系中找主轴方向
+        let v = new THREE.Vector3(1, 0, 0);
+        
+        for (let iter = 0; iter < 10; iter++) {
+            let newV = new THREE.Vector3(0, 0, 0);
+            
+            for (let i = 0; i < count; i++) {
+                tempVec.set(
+                    positions[i * 3],
+                    positions[i * 3 + 1],
+                    positions[i * 3 + 2]
+                );
+                tempVec.applyMatrix4(worldMatrix);
+                
+                const dx = tempVec.x - centerX;
+                const dy = tempVec.y - centerY;
+                const dz = tempVec.z - centerZ;
+                
+                const dot = dx * v.x + dy * v.y + dz * v.z;
+                newV.x += dx * dot;
+                newV.y += dy * dot;
+                newV.z += dz * dot;
+            }
+            
+            newV.normalize();
+            v = newV;
+        }
+        
+        // 计算长度
+        let minProj = Infinity;
+        let maxProj = -Infinity;
+        
+        for (let i = 0; i < count; i++) {
+            tempVec.set(
+                positions[i * 3],
+                positions[i * 3 + 1],
+                positions[i * 3 + 2]
+            );
+            tempVec.applyMatrix4(worldMatrix);
+            
+            const dx = tempVec.x - centerX;
+            const dy = tempVec.y - centerY;
+            const dz = tempVec.z - centerZ;
+            
+            const proj = dx * v.x + dy * v.y + dz * v.z;
+            minProj = Math.min(minProj, proj);
+            maxProj = Math.max(maxProj, proj);
+        }
+        
+        return {
+            center: globalCenter,
+            direction: v,
+            length: maxProj - minProj
+        };
+    }
+
+    /**
+     * 锁定/解锁中线
+     */
+    toggleCenterlineLock() {
+        this.centerlineLocked = !this.centerlineLocked;
+        
+        if (this.centerlineLocked) {
+            // 锁定时保存当前中线方向
+            const candidatePCA = this.computePCAAxis(this.candidateModel);
+            if (candidatePCA) {
+                this.lockedCenterlineDirection = candidatePCA.direction.clone();
+                console.log('🔒 中线已锁定');
+            }
+        } else {
+            this.lockedCenterlineDirection = null;
+            console.log('🔓 中线已解锁');
+        }
+        
+        return this.centerlineLocked;
+    }
+
+    /**
+     * 平移鞋模（锁定中线时只允许沿中线方向移动）
+     */
+    translateShoe(deltaX, deltaY) {
+        if (!this.targetModel || !this.viewer.camera) return;
+        
+        const camera = this.viewer.camera;
+        const container = this.viewer.renderer.domElement;
+        
+        // 计算移动敏感度（根据相机距离和容器大小）
+        const distance = camera.position.length();
+        const sensitivity = distance / container.clientHeight * 2;
+        
+        if (this.centerlineLocked && this.lockedCenterlineDirection) {
+            // 锁定模式：只允许沿中线方向平移
+            const screenMove = new THREE.Vector2(deltaX, deltaY);
+            const moveLength = screenMove.length() * sensitivity;
+            
+            // 判断移动方向（横向还是纵向为主）
+            const isHorizontal = Math.abs(deltaX) > Math.abs(deltaY);
+            
+            // 沿中线方向移动
+            const moveDir = isHorizontal ? 
+                (deltaX > 0 ? 1 : -1) : 
+                (deltaY < 0 ? 1 : -1);  // Y轴翻转
+            
+            const moveVector = this.lockedCenterlineDirection.clone().multiplyScalar(
+                moveDir * moveLength
+            );
+            
+            this.targetModel.position.add(moveVector);
+            console.log('🔒 锁定平移: 沿中线方向');
+        } else {
+            // 正常模式：相对于相机平面移动
+            const right = new THREE.Vector3();
+            const up = new THREE.Vector3();
+            
+            camera.getWorldDirection(right);
+            right.cross(camera.up).normalize();
+            up.copy(camera.up).normalize();
+            
+            const moveX = right.multiplyScalar(deltaX * sensitivity);
+            const moveY = up.multiplyScalar(-deltaY * sensitivity);
+            
+            this.targetModel.position.add(moveX);
+            this.targetModel.position.add(moveY);
+        }
+        
+        // 更新中线显示（实时更新）
+        this.updateCenterlinePositions();
+    }
+
+    /**
+     * 旋转鞋模（锁定中线时只允许绕中线旋转）
+     */
+    rotateShoe(deltaX, deltaY) {
+        if (!this.targetModel || !this.viewer.camera) return;
+        
+        if (this.centerlineLocked && this.lockedCenterlineDirection) {
+            // 锁定模式：只允许绕中线（主轴）旋转
+            const rotationStep = 0.005;
+            const totalDelta = Math.abs(deltaX) + Math.abs(deltaY);
+            const rotationAngle = totalDelta * rotationStep;
+            
+            // 判断旋转方向
+            const rotationDir = (deltaX + deltaY > 0) ? 1 : -1;
+            
+            // 绕中线旋转
+            const rotationQuaternion = new THREE.Quaternion();
+            rotationQuaternion.setFromAxisAngle(
+                this.lockedCenterlineDirection,
+                rotationAngle * rotationDir
+            );
+            
+            this.targetModel.quaternion.multiplyQuaternions(
+                rotationQuaternion,
+                this.targetModel.quaternion
+            );
+            
+            console.log('🔒 锁定旋转: 绕中线旋转');
+        } else {
+            // 正常模式：相对于视图旋转（原有逻辑保持不变）
+            const sensitivity = 0.005;
+            
+            this.targetModel.rotation.y += deltaX * sensitivity;
+            this.targetModel.rotation.x += deltaY * sensitivity;
+        }
+        
+        // 更新中线显示（实时更新）
+        this.updateCenterlinePositions();
+    }
+
+    /**
+     * 更新中线位置
+     * 注意：中线作为模型子对象会自动跟随，通常不需要手动更新
+     * 仅在需要重新计算PCA时调用
+     */
+    updateCenterlinePositions() {
+        // 中线已经是模型的子对象，会自动跟随移动和旋转
+        // 无需每次都重新渲染
+        // 除非需要重新计算PCA（例如模型变形时）
     }
 }
 
