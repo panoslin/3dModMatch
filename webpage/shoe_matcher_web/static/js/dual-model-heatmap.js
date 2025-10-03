@@ -210,16 +210,25 @@ class AlignmentRestorer {
             }
             
             const loader = new THREE.GLTFLoader();
-            const gltf = await new Promise((resolve, reject) => {
-                loader.load(
-                    modelUrl,
-                    (gltf) => resolve(gltf),
-                    (progress) => {
-                        // Progress tracking (silent)
-                    },
-                    (error) => reject(error)
-                );
-            });
+            
+            // 使用缓存加载模型
+            let gltf;
+            if (window.glbCacheManager) {
+                console.log('🔄 使用缓存加载目标模型...');
+                gltf = await window.glbCacheManager.loadModelWithCache(modelUrl, loader);
+            } else {
+                // 回退到直接加载
+                gltf = await new Promise((resolve, reject) => {
+                    loader.load(
+                        modelUrl,
+                        (gltf) => resolve(gltf),
+                        (progress) => {
+                            // Progress tracking (silent)
+                        },
+                        (error) => reject(error)
+                    );
+                });
+            }
             
             this.targetModel = gltf.scene.children[0];
             this.viewer.scene.add(gltf.scene);
@@ -246,16 +255,25 @@ class AlignmentRestorer {
             }
             
             const loader = new THREE.GLTFLoader();
-            const gltf = await new Promise((resolve, reject) => {
-                loader.load(
-                    modelUrl,
-                    (gltf) => resolve(gltf),
-                    (progress) => {
-                        // Progress tracking (silent)
-                    },
-                    (error) => reject(error)
-                );
-            });
+            
+            // 使用缓存加载模型
+            let gltf;
+            if (window.glbCacheManager) {
+                console.log('🔄 使用缓存加载候选模型...');
+                gltf = await window.glbCacheManager.loadModelWithCache(modelUrl, loader);
+            } else {
+                // 回退到直接加载
+                gltf = await new Promise((resolve, reject) => {
+                    loader.load(
+                        modelUrl,
+                        (gltf) => resolve(gltf),
+                        (progress) => {
+                            // Progress tracking (silent)
+                        },
+                        (error) => reject(error)
+                    );
+                });
+            }
             
             this.candidateModel = gltf.scene.children[0];
             this.viewer.scene.add(gltf.scene);

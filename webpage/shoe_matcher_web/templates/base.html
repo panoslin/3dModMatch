@@ -44,11 +44,14 @@
     </script>
     <script src="{% static 'js/vendor/GLTFLoader.js' %}"></script>
     <script src="{% static 'js/vendor/OrbitControls.js' %}"></script>
+    <!-- GLB模型缓存管理器 -->
+    <script src="{% static 'js/glb-cache-manager.js' %}"></script>
     <script>
         // 验证扩展是否加载成功
         if (typeof THREE !== 'undefined') {
             console.log('✅ GLTFLoader 可用:', typeof THREE.GLTFLoader !== 'undefined' || typeof window.GLTFLoader !== 'undefined');
             console.log('✅ OrbitControls 可用:', typeof THREE.OrbitControls !== 'undefined' || typeof window.OrbitControls !== 'undefined');
+            console.log('✅ GLB缓存管理器 可用:', typeof window.glbCacheManager !== 'undefined');
         }
     </script>
     

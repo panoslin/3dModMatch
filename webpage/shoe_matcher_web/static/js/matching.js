@@ -733,6 +733,9 @@ class MatchingApp {
         // 显示汇总信息
         this.showResultsSummary(data.summary);
         
+        // 预加载粗胚GLB模型（后台进行，不阻塞UI）
+        this.preloadBlankGLBs(data.results);
+        
         Utils.showNotification('匹配完成！', 'success');
     }
     
@@ -858,6 +861,62 @@ class MatchingApp {
         $('[data-bs-toggle="tooltip"]').each(function() {
             new bootstrap.Tooltip(this);
         });
+    }
+    
+    /**
+     * 预加载粗胚GLB模型
+     * 
+     * 在后台预加载匹配结果中的粗胚GLB模型，提升后续查看速度
+     * 
+     * @param {Array} results - 匹配结果数组
+     */
+    async preloadBlankGLBs(results) {
+        if (!window.glbCacheManager) {
+            console.warn('GLB缓存管理器未初始化，跳过预加载');
+            return;
+        }
+        
+        if (!results || results.length === 0) {
+            return;
+        }
+        
+        console.log(`🚀 开始预加载粗胚GLB模型 (共${results.length}个结果)...`);
+        
+        // 提取所有粗胚的GLB URLs
+        const glbUrls = [];
+        for (const result of results) {
+            // 尝试从result中获取GLB路径
+            const blankPath = result.blank_path || result.path;
+            if (blankPath) {
+                // 从3dm路径推断GLB路径
+                // 例如: /app/candidates/002大.3dm -> /media/glb_models/blanks/xxx/blank_xxx_preview.glb
+                const blankName = blankPath.split('/').pop().replace('.3dm', '');
+                
+                // 尝试构建GLB URL（根据实际API返回的数据结构调整）
+                // 这里需要从API获取实际的GLB路径
+                if (result.blank_id) {
+                    const glbUrl = `/api/blanks/${result.blank_id}/glb/preview/`;
+                    glbUrls.push(glbUrl);
+                }
+            }
+        }
+        
+        if (glbUrls.length === 0) {
+            console.log('没有找到可预加载的GLB模型');
+            return;
+        }
+        
+        // 限制预加载数量（避免占用太多资源）
+        const maxPreload = 10;
+        const urlsToLoad = glbUrls.slice(0, maxPreload);
+        
+        try {
+            const loader = new THREE.GLTFLoader();
+            await window.glbCacheManager.preloadModels(urlsToLoad, loader);
+            console.log('✅ 粗胚GLB预加载完成');
+        } catch (error) {
+            console.error('预加载失败:', error);
+        }
     }
     
     /**

@@ -755,15 +755,26 @@
                 
                 const loader = new GLTFLoader(this.loadingManager);
                 
-                // 加载模型
-                const gltf = await new Promise((resolve, reject) => {
-                    loader.load(
-                        modelConfig.url,
-                        resolve,
-                        undefined,
-                        reject
+                // 使用缓存加载模型
+                let gltf;
+                if (window.glbCacheManager && !options.skipCache) {
+                    console.log('🔄 使用缓存加载器...');
+                    gltf = await window.glbCacheManager.loadModelWithCache(
+                        modelConfig.url, 
+                        loader, 
+                        options
                     );
-                });
+                } else {
+                    // 回退到直接加载
+                    gltf = await new Promise((resolve, reject) => {
+                        loader.load(
+                            modelConfig.url,
+                            resolve,
+                            undefined,
+                            reject
+                        );
+                    });
+                }
                 
                 // 修复材质问题 - 确保所有材质都有正确的属性
                 if (gltf.scene) {
