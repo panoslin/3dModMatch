@@ -54,6 +54,11 @@ class TransparentOverlayViewer {
         this.boundMouseDown = this.onMouseDown.bind(this);
         this.boundMouseMove = this.onMouseMove.bind(this);
         this.boundMouseUp = this.onMouseUp.bind(this);
+        this.boundKeyDown = this.onKeyDown.bind(this);
+        
+        // 键盘控制配置
+        this.keyboardStepSize = 1.0;  // 每次按键的基础移动距离（mm）
+        this.keyboardRotationStep = 0.02;  // 每次按键的旋转角度（弧度）≈1.15度
     }
 
     /**
@@ -446,7 +451,10 @@ class TransparentOverlayViewer {
         container.addEventListener('mouseup', this.boundMouseUp);
         container.addEventListener('mouseleave', this.boundMouseUp);
         
-        console.log('已启用手动调整交互');
+        // 启用键盘控制
+        document.addEventListener('keydown', this.boundKeyDown);
+        
+        console.log('已启用手动调整交互（鼠标 + 键盘）');
     }
 
     /**
@@ -458,6 +466,9 @@ class TransparentOverlayViewer {
         container.removeEventListener('mousemove', this.boundMouseMove);
         container.removeEventListener('mouseup', this.boundMouseUp);
         container.removeEventListener('mouseleave', this.boundMouseUp);
+        
+        // 禁用键盘控制
+        document.removeEventListener('keydown', this.boundKeyDown);
         
         console.log('已禁用手动调整交互');
     }
@@ -566,6 +577,146 @@ class TransparentOverlayViewer {
         
         // 绕 X 轴旋转（垂直拖拽）
         this.targetModel.rotation.x += deltaY * sensitivity;
+    }
+
+    /**
+     * 键盘按下事件
+     */
+    onKeyDown(event) {
+        // 只在平移或旋转模式下响应
+        if (this.interactionMode === 'view') return;
+        
+        // 检查是否是方向键
+        const arrowKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+        if (!arrowKeys.includes(event.key)) return;
+        
+        // 防止页面滚动
+        event.preventDefault();
+        
+        // 检测修饰键
+        const multiplier = event.shiftKey ? 5 : 1;  // Shift键加速5倍
+        
+        // 根据模式处理
+        if (this.interactionMode === 'translate') {
+            this.handleKeyboardTranslate(event.key, multiplier);
+        } else if (this.interactionMode === 'rotate') {
+            this.handleKeyboardRotate(event.key, multiplier);
+        }
+    }
+
+    /**
+     * 键盘平移控制
+     */
+    handleKeyboardTranslate(key, multiplier = 1) {
+        if (!this.targetModel || !this.viewer.camera) return;
+        
+        const camera = this.viewer.camera;
+        const stepSize = this.keyboardStepSize * multiplier;  // 基础步长 × 倍数
+        
+        // 获取相机的右向量和上向量（当前视图的平面坐标系）
+        const right = new THREE.Vector3();
+        const up = new THREE.Vector3();
+        
+        camera.getWorldDirection(right);
+        right.cross(camera.up).normalize();  // 右向量 = 前向量 × 上向量
+        up.copy(camera.up).normalize();      // 上向量
+        
+        // 根据按键方向计算移动向量
+        let moveVector = new THREE.Vector3();
+        
+        switch(key) {
+            case 'ArrowLeft':   // 向左移动
+                moveVector = right.multiplyScalar(-stepSize);
+                break;
+            case 'ArrowRight':  // 向右移动
+                moveVector = right.multiplyScalar(stepSize);
+                break;
+            case 'ArrowUp':     // 向上移动
+                moveVector = up.multiplyScalar(stepSize);
+                break;
+            case 'ArrowDown':   // 向下移动
+                moveVector = up.multiplyScalar(-stepSize);
+                break;
+        }
+        
+        // 应用移动
+        this.targetModel.position.add(moveVector);
+        
+        // 可选：显示提示
+        const direction = {
+            'ArrowLeft': '左',
+            'ArrowRight': '右',
+            'ArrowUp': '上',
+            'ArrowDown': '下'
+        }[key];
+        console.log(`⌨️ 平移: ${direction} ${stepSize.toFixed(1)}mm`);
+    }
+
+    /**
+     * 键盘旋转控制（相对于当前视图）
+     */
+    handleKeyboardRotate(key, multiplier = 1) {
+        if (!this.targetModel || !this.viewer.camera) return;
+        
+        const camera = this.viewer.camera;
+        const rotationStep = this.keyboardRotationStep * multiplier;
+        const degrees = (rotationStep * 180 / Math.PI).toFixed(1);
+        
+        // 获取相机的坐标系向量
+        const cameraDirection = new THREE.Vector3();
+        camera.getWorldDirection(cameraDirection);  // 相机朝向（Z轴）
+        
+        const right = new THREE.Vector3();
+        right.crossVectors(cameraDirection, camera.up).normalize();  // 右向量（屏幕X轴）
+        
+        const up = camera.up.clone().normalize();  // 上向量（屏幕Y轴）
+        
+        // 创建旋转轴和旋转矩阵
+        let rotationAxis;
+        let rotationAngle;
+        let description;
+        
+        switch(key) {
+            case 'ArrowLeft':   // 绕相机上向量旋转（屏幕垂直轴）- 向左转
+                rotationAxis = up;
+                rotationAngle = rotationStep;
+                description = `绕视图垂直轴: +${degrees}° (向左转)`;
+                break;
+            case 'ArrowRight':  // 绕相机上向量旋转 - 向右转
+                rotationAxis = up;
+                rotationAngle = -rotationStep;
+                description = `绕视图垂直轴: -${degrees}° (向右转)`;
+                break;
+            case 'ArrowUp':     // 绕相机右向量旋转（屏幕水平轴）- 向后仰
+                rotationAxis = right;
+                rotationAngle = rotationStep;
+                description = `绕视图水平轴: +${degrees}° (后仰)`;
+                break;
+            case 'ArrowDown':   // 绕相机右向量旋转 - 向前倾
+                rotationAxis = right;
+                rotationAngle = -rotationStep;
+                description = `绕视图水平轴: -${degrees}° (前倾)`;
+                break;
+        }
+        
+        // 应用旋转（绕世界坐标系中的任意轴旋转）
+        if (rotationAxis && rotationAngle !== undefined) {
+            // 将旋转轴转换到模型的局部坐标系
+            const modelWorldQuaternion = this.targetModel.getWorldQuaternion(new THREE.Quaternion());
+            const inverseModelQuaternion = modelWorldQuaternion.clone().invert();
+            
+            // 在世界坐标系中创建旋转
+            const rotationQuaternion = new THREE.Quaternion();
+            rotationQuaternion.setFromAxisAngle(rotationAxis, rotationAngle);
+            
+            // 应用旋转到模型
+            this.targetModel.quaternion.multiplyQuaternions(
+                rotationQuaternion,
+                this.targetModel.quaternion
+            );
+            
+            console.log(`⌨️ ${description}`);
+        }
     }
 
     /**

@@ -4330,9 +4330,9 @@ class MatchingApp {
             
             // 更新提示文字
             const hints = {
-                'view': '当前模式: <strong>查看模式</strong> - 左键旋转，滚轮缩放',
-                'translate': '当前模式: <strong>平移鞋模</strong> - 左键拖拽移动鞋模位置',
-                'rotate': '当前模式: <strong>旋转鞋模</strong> - 左键拖拽旋转鞋模角度'
+                'view': '当前模式: <strong>查看模式</strong> - 左键旋转视图，滚轮缩放，右键平移相机',
+                'translate': '当前模式: <strong>平移鞋模</strong> - 鼠标左键拖拽 或 <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd>方向键移动（相对于当前视图平面）',
+                'rotate': '当前模式: <strong>旋转鞋模</strong> - 鼠标左键拖拽 或 <kbd>←</kbd>左转 <kbd>→</kbd>右转 <kbd>↑</kbd>后仰 <kbd>↓</kbd>前倾（相对于当前视图）'
             };
             $('#viewer-mode-hint').html(`<i class="fas fa-info-circle me-1"></i>${hints[mode]}`);
             
