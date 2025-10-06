@@ -1307,18 +1307,18 @@ class TransparentOverlayViewer {
             console.log('🔒 锁定平移: 沿中线方向');
         } else {
             // 正常模式：相对于相机平面移动
-            const right = new THREE.Vector3();
-            const up = new THREE.Vector3();
-            
-            camera.getWorldDirection(right);
-            right.cross(camera.up).normalize();
-            up.copy(camera.up).normalize();
-            
-            const moveX = right.multiplyScalar(deltaX * sensitivity);
-            const moveY = up.multiplyScalar(-deltaY * sensitivity);
-            
-            this.targetModel.position.add(moveX);
-            this.targetModel.position.add(moveY);
+        const right = new THREE.Vector3();
+        const up = new THREE.Vector3();
+        
+        camera.getWorldDirection(right);
+        right.cross(camera.up).normalize();
+        up.copy(camera.up).normalize();
+        
+        const moveX = right.multiplyScalar(deltaX * sensitivity);
+        const moveY = up.multiplyScalar(-deltaY * sensitivity);
+        
+        this.targetModel.position.add(moveX);
+        this.targetModel.position.add(moveY);
         }
         
         // 更新中线显示（实时更新）
@@ -1358,7 +1358,7 @@ class TransparentOverlayViewer {
             const sensitivity = 0.005;
             
             this.targetModel.rotation.y += deltaX * sensitivity;
-            this.targetModel.rotation.x += deltaY * sensitivity;
+        this.targetModel.rotation.x += deltaY * sensitivity;
         }
         
         // 更新中线显示（实时更新）
