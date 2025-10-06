@@ -19,6 +19,7 @@ import os
 import sys
 import logging
 import tempfile
+import gc
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
@@ -326,6 +327,12 @@ def process_model_lod(self, model_id: int, model_type: str = 'shoe', force_regen
         }, timeout=3600)  # 保留1小时
         
         logger.info(f"LOD处理完成: {model_type} #{model_id}")
+        
+        # 清理对象引用
+        del processor
+        del conversion_result
+        gc.collect()  # 强制垃圾回收
+        
         return result
         
     except Exception as e:
@@ -361,6 +368,9 @@ def process_model_lod(self, model_id: int, model_type: str = 'shoe', force_regen
             'model_id': model_id,
             'model_type': model_type
         }
+    finally:
+        # 最终清理
+        gc.collect()
 
 
 @shared_task

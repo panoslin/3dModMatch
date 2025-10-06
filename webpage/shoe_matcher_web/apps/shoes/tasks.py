@@ -7,6 +7,7 @@ from django.conf import settings
 import os
 import sys
 import logging
+import gc
 
 # 添加项目路径以便导入enhanced_3dm_renderer
 sys.path.insert(0, os.path.join(settings.BASE_DIR.parent.parent, 'hybrid'))
@@ -40,6 +41,7 @@ def process_shoe_file(shoe_id):
             
             # 处理3DM文件
             renderer = Enhanced3DRenderer()
+            
             logger.info("开始读取3DM文件...")
             data = renderer.read_3dm(shoe.file.path)
             logger.info(f"3DM文件读取完成: success={data.success}")
@@ -57,17 +59,27 @@ def process_shoe_file(shoe_id):
                 logger.info(f"  - 顶点数: {shoe.vertex_count}")
                 logger.info(f"  - 面数: {shoe.face_count}")
                 
-                # 生成预览HTML
-                logger.info("开始生成预览HTML...")
-                fig = renderer.create_figure(data)
-                if fig:
-                    shoe.preview_html = fig.to_html(
-                        include_plotlyjs='cdn',
-                        div_id=f'shoe_preview_{shoe.id}'
-                    )
-                    logger.info(f"预览HTML生成成功: 长度={len(shoe.preview_html)} 字符")
-                else:
-                    logger.warning("预览HTML生成失败")
+                # 生成预览HTML - 已禁用以节省内存
+                # 改用前端Three.js直接加载GLB文件进行渲染
+                logger.info("跳过预览HTML生成（节省内存），依赖Three.js前端渲染")
+                shoe.preview_html = ""  # 清空，使用LOD生成的GLB文件
+                
+                # 原代码已注释（占用~140MB/任务）:
+                # fig = renderer.create_figure(data)
+                # if fig:
+                #     shoe.preview_html = fig.to_html(...)
+                #     del fig
+                
+                # 清理renderer和data对象
+                logger.info("清理临时对象...")
+                if 'data' in locals():
+                    del data
+                if 'renderer' in locals():
+                    del renderer
+                
+                # 强制垃圾回收
+                gc.collect()
+                gc.collect()  # 执行两次确保清理
                 
                 shoe.processing_status = 'completed'
                 shoe.is_processed = True
@@ -105,3 +117,7 @@ def process_shoe_file(shoe_id):
     except Exception as e:
         logger.error(f"Unexpected error processing shoe {shoe_id}: {e}")
         return {'success': False, 'error': str(e)}
+    finally:
+        # 确保最后执行垃圾回收
+        gc.collect()
+        logger.info(f"[任务完成] shoe_id={shoe_id}")

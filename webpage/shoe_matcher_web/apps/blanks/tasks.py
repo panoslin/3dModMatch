@@ -39,13 +39,21 @@ def process_blank_file(blank_id):
                 blank.vertex_count = data.stats.get('vertex_count', 0)
                 blank.face_count = data.stats.get('face_count', 0)
                 
-                # 生成预览HTML
-                fig = renderer.create_figure(data)
-                if fig:
-                    blank.preview_html = fig.to_html(
-                        include_plotlyjs='cdn',
-                        div_id=f'blank_preview_{blank.id}'
-                    )
+                # 生成预览HTML - 已禁用以节省内存
+                # 改用前端Three.js直接加载GLB文件进行渲染
+                logger.info("跳过预览HTML生成（节省内存），依赖Three.js前端渲染")
+                blank.preview_html = ""  # 清空，使用LOD生成的GLB文件
+                
+                # 清理临时对象
+                if 'data' in locals():
+                    del data
+                if 'renderer' in locals():
+                    del renderer
+                
+                # 强制垃圾回收
+                import gc
+                gc.collect()
+                gc.collect()
                 
                 blank.processing_status = 'completed'
                 blank.is_processed = True
