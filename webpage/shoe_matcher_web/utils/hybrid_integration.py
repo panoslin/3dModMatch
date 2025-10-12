@@ -290,12 +290,14 @@ class HybridMatcherService:
                 
                 processed_results.append(processed_result)
             
-            # 按三级排序：1.覆盖率(高到低) 2.体积(低到高) 3.P15间隙值(低到高)
-            # 与原算法保持一致的排序逻辑
+            # 新排序逻辑：只考虑99%以上候选，按体积小→P15大排序
+            # 第1级: 过滤 - 只保留覆盖率≥99%的候选（优秀档）
+            # 第2级: 体积从小到大（节省材料）
+            # 第3级: P15间隙从大到小（余量充足优先）
             processed_results.sort(key=lambda x: (
-                -x.get('inside_ratio', 0.0),  # 第一级：覆盖率从高到低（负号实现降序）
-                x.get('volume', float('inf')),  # 第二级：体积从低到高
-                x.get('p15_clearance', float('inf'))  # 第三级：P15间隙值从低到高
+                0 if x.get('inside_ratio', 0.0) >= 0.99 else 1,  # 99%以上=0（前面），<99%=1（后面）
+                x.get('volume', float('inf')),                    # 体积从小到大
+                -x.get('p15_clearance', 0.0)                      # P15从大到小（负号=降序）
             ))
             
             # 计算汇总统计

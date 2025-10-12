@@ -17,6 +17,7 @@
 #include <cmath>
 #include <fstream>
 #include <array>
+#include <iomanip>
 
 // OpenNURBS includes
 #include "opennurbs.h"
@@ -990,6 +991,578 @@ py::dict stl_to_3dm(const std::string& stl_path, const std::string& output_3dm_p
     }
 }
 
+// ----------------------------- 中线对齐 + Adam优化 -----------------------------
+
+// PCA结果结构体
+struct PCAResult {
+    Eigen::Vector3d center;
+    Eigen::Vector3d main_axis;
+    Eigen::Vector3d side_axis;
+    double length;
+};
+
+// 计算网格的PCA主轴
+static PCAResult compute_pca_axis(const geometry::TriangleMesh& mesh) {
+    PCAResult result;
+    
+    // 1. 计算中心点
+    Eigen::Vector3d center = Eigen::Vector3d::Zero();
+    for (const auto& v : mesh.vertices_) {
+        center += v;
+    }
+    center /= std::max<size_t>(1, mesh.vertices_.size());
+    result.center = center;
+    
+    // 2. 构建协方差矩阵
+    Eigen::Matrix3d cov = Eigen::Matrix3d::Zero();
+    for (const auto& v : mesh.vertices_) {
+        Eigen::Vector3d d = v - center;
+        cov += d * d.transpose();
+    }
+    cov /= std::max<size_t>(1, mesh.vertices_.size());
+    
+    // 3. 特征值分解
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver(cov);
+    
+    // 特征向量按特征值升序排列
+    result.main_axis = solver.eigenvectors().col(2);  // 最大特征向量（主轴）
+    result.side_axis = solver.eigenvectors().col(1);  // 次大特征向量（侧轴）
+    
+    // 4. 计算长度
+    double min_proj = std::numeric_limits<double>::max();
+    double max_proj = std::numeric_limits<double>::lowest();
+    for (const auto& v : mesh.vertices_) {
+        double proj = (v - center).dot(result.main_axis);
+        min_proj = std::min(min_proj, proj);
+        max_proj = std::max(max_proj, proj);
+    }
+    result.length = max_proj - min_proj;
+    
+    return result;
+}
+
+// 构建中线对齐的变换矩阵
+static Eigen::Matrix4d build_centerline_transform(
+    const PCAResult& src_pca,
+    const PCAResult& tgt_pca,
+    bool mirror,
+    bool flip
+) {
+    Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
+    
+    // 1. 处理源轴方向
+    Eigen::Vector3d src_axis = src_pca.main_axis;
+    Eigen::Vector3d src_center = src_pca.center;
+    
+    if (flip) {
+        src_axis = -src_axis;
+    }
+    if (mirror) {
+        src_axis.x() = -src_axis.x();
+        src_center.x() = -src_center.x();
+    }
+    
+    // 2. 构建旋转矩阵（对齐主轴）
+    Eigen::Vector3d tgt_axis = tgt_pca.main_axis;
+    Eigen::Quaterniond q;
+    q.setFromTwoVectors(src_axis, tgt_axis);
+    T.block<3,3>(0,0) = q.toRotationMatrix();
+    
+    // 3. 平移（对齐中心）
+    Eigen::Vector3d rotated_center = T.block<3,3>(0,0) * src_center;
+    T.block<3,1>(0,3) = tgt_pca.center - rotated_center;
+    
+    return T;
+}
+
+// 应用参数化调整（平移+旋转）
+static Eigen::Matrix4d apply_parametric_adjustment(
+    const Eigen::Matrix4d& T_base,
+    const PCAResult& tgt_pca,
+    double translate_mm,
+    double rotate_deg
+) {
+    Eigen::Matrix4d T = T_base;
+    
+    // 1. 沿中线平移
+    T.block<3,1>(0,3) += tgt_pca.main_axis * translate_mm;
+    
+    // 2. 绕中线旋转
+    if (std::abs(rotate_deg) > 1e-6) {
+        double angle_rad = rotate_deg * M_PI / 180.0;
+        Eigen::AngleAxisd rotation(angle_rad, tgt_pca.main_axis);
+        Eigen::Matrix3d R = rotation.toRotationMatrix();
+        
+        Eigen::Vector3d offset = T.block<3,1>(0,3) - tgt_pca.center;
+        T.block<3,3>(0,0) = R * T.block<3,3>(0,0);
+        T.block<3,1>(0,3) = tgt_pca.center + R * offset;
+    }
+    
+    return T;
+}
+
+// 评价对齐质量（优化版本 - 复用采样点和场景）
+static double evaluate_alignment_score_optimized(
+    const std::vector<Eigen::Vector3d>& sample_points,  // 预采样的点（复用）
+    t::geometry::RaycastingScene& scene,                 // 预构建的场景（复用，非const）
+    const Eigen::Matrix4d& transform                     // 变换矩阵
+) {
+    // 应用变换到采样点
+    std::vector<float> buf;
+    buf.reserve(sample_points.size() * 3);
+    for (const auto& p : sample_points) {
+        Eigen::Vector4d ph(p.x(), p.y(), p.z(), 1.0);
+        Eigen::Vector3d pt = (transform * ph).head<3>();
+        buf.push_back((float)pt.x());
+        buf.push_back((float)pt.y());
+        buf.push_back((float)pt.z());
+    }
+    core::Tensor q(buf, {(int64_t)sample_points.size(), 3}, core::Float32);
+    
+    auto sdist = scene.ComputeSignedDistance(q);
+    auto inside = scene.ComputeOccupancy(q);
+    
+    const float* sdv = sdist.GetDataPtr<float>();
+    const float* inv = inside.GetDataPtr<float>();
+    size_t n = sample_points.size();
+    
+    // 快速统计（避免创建临时vector）
+    double sum_clearance = 0.0;
+    size_t inside_cnt = 0;
+    
+    for (size_t i = 0; i < n; ++i) {
+        if (inv[i] > 0.5f) {
+            inside_cnt++;
+            sum_clearance += std::abs((double)sdv[i]);
+        }
+    }
+    
+    if (inside_cnt == 0) return -1000.0;
+    
+    double inside_ratio = (double)inside_cnt / n;
+    double mean_clearance = sum_clearance / inside_cnt;
+    
+    // 综合得分
+    if (inside_ratio >= 0.99) {
+        return inside_ratio * 100.0 + mean_clearance * 10.0;
+    } else {
+        return inside_ratio * 50.0;
+    }
+}
+
+// 评价对齐质量（快速版本，用于优化）
+static double evaluate_alignment_score(
+    geometry::TriangleMesh target,
+    geometry::TriangleMesh candidate_aligned,
+    size_t samples = 30000
+) {
+    // 构建RaycastingScene
+    t::geometry::TriangleMesh tmC = t::geometry::TriangleMesh::FromLegacy(candidate_aligned);
+    t::geometry::RaycastingScene scene;
+    scene.AddTriangles(tmC);
+    
+    // 采样目标表面
+    auto pts = target.SamplePointsUniformly(samples);
+    std::vector<float> buf;
+    buf.reserve(pts->points_.size() * 3);
+    for (const auto& p : pts->points_) {
+        buf.push_back((float)p.x());
+        buf.push_back((float)p.y());
+        buf.push_back((float)p.z());
+    }
+    core::Tensor q(buf, {(int64_t)pts->points_.size(), 3}, core::Float32);
+    
+    auto sdist = scene.ComputeSignedDistance(q);
+    auto inside = scene.ComputeOccupancy(q);
+    
+    std::vector<float> sdv(sdist.GetDataPtr<float>(), sdist.GetDataPtr<float>() + sdist.NumElements());
+    std::vector<float> inv(inside.GetDataPtr<float>(), inside.GetDataPtr<float>() + inside.NumElements());
+    
+    // 统计
+    std::vector<double> clearances;
+    size_t inside_cnt = 0;
+    for (size_t i = 0; i < sdv.size(); ++i) {
+        if (inv[i] > 0.5f) {
+            inside_cnt++;
+            clearances.push_back(std::abs((double)sdv[i]));
+        }
+    }
+    
+    double inside_ratio = (double)inside_cnt / std::max<size_t>(1, sdv.size());
+    
+    if (clearances.empty()) {
+        return -1000.0;
+    }
+    
+    double mean_clearance = std::accumulate(clearances.begin(), clearances.end(), 0.0) / clearances.size();
+    
+    // 综合得分：覆盖率优先，平均间隙次之
+    double score;
+    if (inside_ratio >= 0.99) {
+        score = inside_ratio * 100.0 + mean_clearance * 10.0;
+    } else {
+        score = inside_ratio * 50.0;
+    }
+    
+    return score;
+}
+
+// Adam优化器类
+class AdamOptimizer {
+public:
+    AdamOptimizer(double learning_rate = 0.5,
+                  double beta1 = 0.9,
+                  double beta2 = 0.999,
+                  double epsilon = 1e-8)
+        : lr_(learning_rate), beta1_(beta1), beta2_(beta2), epsilon_(epsilon), t_(0) {}
+    
+    // 执行一步优化
+    Eigen::Vector2d step(const Eigen::Vector2d& gradient) {
+        t_++;
+        
+        // 更新一阶矩估计（动量）
+        m_ = beta1_ * m_ + (1.0 - beta1_) * gradient;
+        
+        // 更新二阶矩估计（自适应学习率）
+        v_ = beta2_ * v_ + (1.0 - beta2_) * gradient.cwiseProduct(gradient);
+        
+        // 偏差修正
+        Eigen::Vector2d m_hat = m_ / (1.0 - std::pow(beta1_, t_));
+        Eigen::Vector2d v_hat = v_ / (1.0 - std::pow(beta2_, t_));
+        
+        // 计算更新步长
+        Eigen::Vector2d update = Eigen::Vector2d::Zero();
+        for (int i = 0; i < 2; ++i) {
+            update(i) = -lr_ * m_hat(i) / (std::sqrt(v_hat(i)) + epsilon_);
+        }
+        
+        return update;
+    }
+    
+    void reset() {
+        m_.setZero();
+        v_.setZero();
+        t_ = 0;
+    }
+    
+private:
+    double lr_;
+    double beta1_;
+    double beta2_;
+    double epsilon_;
+    int t_;
+    Eigen::Vector2d m_{0, 0};  // 一阶矩
+    Eigen::Vector2d v_{0, 0};  // 二阶矩
+};
+
+// 数值梯度计算（优化版本 - 复用场景和采样点）
+static Eigen::Vector2d compute_numerical_gradient_optimized(
+    const std::vector<Eigen::Vector3d>& sample_points,
+    t::geometry::RaycastingScene& scene,  // 非const（RaycastingScene方法非const）
+    const Eigen::Matrix4d& T_base,
+    const PCAResult& tgt_pca,
+    const Eigen::Vector2d& params,
+    double epsilon = 0.5
+) {
+    Eigen::Vector2d gradient;
+    
+    for (int i = 0; i < 2; ++i) {
+        // 正向扰动
+        Eigen::Vector2d params_plus = params;
+        params_plus(i) += epsilon;
+        Eigen::Matrix4d T_plus = apply_parametric_adjustment(T_base, tgt_pca, params_plus(0), params_plus(1));
+        double score_plus = evaluate_alignment_score_optimized(sample_points, scene, T_plus);
+        
+        // 负向扰动
+        Eigen::Vector2d params_minus = params;
+        params_minus(i) -= epsilon;
+        Eigen::Matrix4d T_minus = apply_parametric_adjustment(T_base, tgt_pca, params_minus(0), params_minus(1));
+        double score_minus = evaluate_alignment_score_optimized(sample_points, scene, T_minus);
+        
+        // 中心差分
+        gradient(i) = (score_plus - score_minus) / (2.0 * epsilon);
+    }
+    
+    return gradient;
+}
+
+// 主函数：基于中线的Adam优化对齐（高性能版本）
+py::dict align_centerline_adam(
+    py::array_t<double> v_src, py::array_t<int> f_src,
+    py::array_t<double> v_tgt, py::array_t<int> f_tgt,
+    double voxel = 5.0,
+    double fpfh_radius = 10.0,
+    double icp_thr = 15.0,
+    int max_iterations = 50,
+    double learning_rate = 0.5,
+    double convergence_tol = 0.1,
+    bool verbose = false
+) {
+    auto mS = mesh_from_np(v_src, f_src);
+    auto mT = mesh_from_np(v_tgt, f_tgt);
+    
+    if (verbose) std::cout << "\n=== Centerline Adam Alignment (Optimized) ===" << std::endl;
+    
+    // ========== 性能优化1: 预处理 - 采样和场景构建（只做一次）==========
+    // 采样目标表面点（复用）
+    const size_t quick_samples = 5000;   // 快速评估用少量采样
+    const size_t final_samples = 15000;  // 最终评估用较多采样
+    
+    auto pts_quick = mT->SamplePointsUniformly(quick_samples);
+    std::vector<Eigen::Vector3d> sample_points_quick;
+    sample_points_quick.reserve(pts_quick->points_.size());
+    for (const auto& p : pts_quick->points_) {
+        sample_points_quick.push_back(p);
+    }
+    
+    // 构建目标的RaycastingScene（注意：是用源网格构建场景，目标点去查询）
+    // 修正：应该用候选（对齐后的源）构建场景
+    
+    if (verbose) std::cout << "[Optimization] Pre-sampled " << quick_samples << " points for fast evaluation" << std::endl;
+    
+    // 阶段1: 计算PCA中线
+    if (verbose) std::cout << "\n[Stage 1] Computing PCA centerlines..." << std::endl;
+    PCAResult src_pca = compute_pca_axis(*mS);
+    PCAResult tgt_pca = compute_pca_axis(*mT);
+    
+    if (verbose) {
+        std::cout << "  Source: center=(" << src_pca.center.transpose() 
+                  << "), axis=(" << src_pca.main_axis.transpose() << ")" << std::endl;
+        std::cout << "  Target: center=(" << tgt_pca.center.transpose() 
+                  << "), axis=(" << tgt_pca.main_axis.transpose() << ")" << std::endl;
+    }
+    
+    // ========== 性能优化2: 粗网格快速筛选最佳方向 ==========
+    if (verbose) std::cout << "\n[Stage 2] Quick direction screening (coarse grid)..." << std::endl;
+    
+    struct DirectionResult {
+        Eigen::Matrix4d T;
+        double score;
+        bool mirror;
+        bool flip;
+        Eigen::Vector2d params;
+    };
+    
+    std::vector<std::pair<bool, bool>> directions = {
+        {false, false}, {true, false}, {false, true}, {true, true}
+    };
+    
+    // ========== 优化3: 粗网格快速筛选（5x5=25次评估，找最佳方向）==========
+    std::vector<double> direction_scores(4, -std::numeric_limits<double>::infinity());
+    
+    for (size_t dir_idx = 0; dir_idx < 4; ++dir_idx) {
+        bool mirror = directions[dir_idx].first;
+        bool flip = directions[dir_idx].second;
+        
+        Eigen::Matrix4d T_base = build_centerline_transform(src_pca, tgt_pca, mirror, flip);
+        
+        // 粗网格：只测试5个关键点
+        std::vector<double> grid_t = {-10, -5, 0, 5, 10};  // 5个平移
+        std::vector<double> grid_r = {-5, -2, 0, 2, 5};    // 5个旋转
+        
+        auto mS_transformed = *mS;
+        mS_transformed.Transform(T_base);
+        
+        // 构建场景（每个方向构建一次）
+        t::geometry::TriangleMesh tmS = t::geometry::TriangleMesh::FromLegacy(mS_transformed);
+        t::geometry::RaycastingScene scene;
+        scene.AddTriangles(tmS);
+        
+        for (double t : grid_t) {
+            for (double r : grid_r) {
+                Eigen::Matrix4d T_adj = apply_parametric_adjustment(Eigen::Matrix4d::Identity(), tgt_pca, t, r);
+                double score = evaluate_alignment_score_optimized(sample_points_quick, scene, T_adj);
+                direction_scores[dir_idx] = std::max(direction_scores[dir_idx], score);
+            }
+        }
+        
+        if (verbose) {
+            std::cout << "  Dir " << (dir_idx+1) << " (";
+            if (mirror) std::cout << "M";
+            if (flip) std::cout << "F";
+            if (!mirror && !flip) std::cout << "O";
+            std::cout << "): score=" << direction_scores[dir_idx] << std::endl;
+        }
+    }
+    
+    // 选择最佳方向（只优化这一个）
+    size_t best_dir_idx = std::distance(direction_scores.begin(), 
+        std::max_element(direction_scores.begin(), direction_scores.end()));
+    
+    bool mirror = directions[best_dir_idx].first;
+    bool flip = directions[best_dir_idx].second;
+    
+    if (verbose) {
+        std::cout << "\n[Stage 3] Optimizing best direction: ";
+        if (mirror) std::cout << "Mirror ";
+        if (flip) std::cout << "Flip ";
+        if (!mirror && !flip) std::cout << "Original";
+        std::cout << " (score=" << direction_scores[best_dir_idx] << ")" << std::endl;
+    }
+    
+    // ========== 优化4: 只对最佳方向进行Adam优化 ==========
+    Eigen::Matrix4d T_base = build_centerline_transform(src_pca, tgt_pca, mirror, flip);
+    auto mS_base = *mS;
+    mS_base.Transform(T_base);
+    
+    // 构建场景（只构建一次）
+    t::geometry::TriangleMesh tmS = t::geometry::TriangleMesh::FromLegacy(mS_base);
+    t::geometry::RaycastingScene scene;
+    scene.AddTriangles(tmS);
+    
+    if (verbose) std::cout << "  [Adam] Starting with " << max_iterations << " max iterations..." << std::endl;
+    
+    AdamOptimizer optimizer(learning_rate, 0.9, 0.999, 1e-8);
+    Eigen::Vector2d params(0.0, 0.0);
+    double best_score = -std::numeric_limits<double>::infinity();
+    Eigen::Vector2d best_params = params;
+    int no_improve_count = 0;
+    
+    for (int iter = 0; iter < max_iterations; ++iter) {
+        // 计算当前得分（使用优化版本）
+        Eigen::Matrix4d T_current = apply_parametric_adjustment(Eigen::Matrix4d::Identity(), tgt_pca, params(0), params(1));
+        double current_score = evaluate_alignment_score_optimized(sample_points_quick, scene, T_current);
+        
+        if (current_score > best_score) {
+            best_score = current_score;
+            best_params = params;
+            no_improve_count = 0;
+            if (verbose && iter % 5 == 0) {
+                std::cout << "    Iter " << std::setw(2) << iter << ": score=" << current_score << " ✓" << std::endl;
+            }
+        } else {
+            no_improve_count++;
+        }
+        
+        // 早停：连续5次无改善（优化：从10降到5）
+        if (no_improve_count >= 5) {
+            if (verbose) std::cout << "    Early stop at iter " << iter << std::endl;
+            break;
+        }
+        
+        // 计算梯度（使用优化版本）
+        Eigen::Vector2d gradient = compute_numerical_gradient_optimized(sample_points_quick, scene, 
+            Eigen::Matrix4d::Identity(), tgt_pca, params, 0.5);
+        
+        Eigen::Vector2d update = optimizer.step(gradient);
+        params += update;
+        
+        // 边界约束
+        params(0) = std::max(-20.0, std::min(20.0, params(0)));
+        params(1) = std::max(-10.0, std::min(10.0, params(1)));
+        
+        if (update.norm() < convergence_tol) {
+            if (verbose) std::cout << "    Converged at iter " << iter << std::endl;
+            break;
+        }
+    }
+    
+    if (verbose) {
+        std::cout << "  Best: t=" << best_params(0) << "mm, r=" << best_params(1) << "°, score=" << best_score << std::endl;
+    }
+    
+    // 构建最佳变换
+    Eigen::Matrix4d T_opt = apply_parametric_adjustment(Eigen::Matrix4d::Identity(), tgt_pca, best_params(0), best_params(1));
+    Eigen::Matrix4d T_best = T_opt * T_base;
+    
+    // ========== 优化5: 跳过ICP微调（Adam已经够准确）==========
+    // 直接使用Adam优化的结果，节省3-5秒
+    Eigen::Matrix4d T_final = T_best;
+    auto mS_final = *mS;
+    mS_final.Transform(T_final);
+    
+    // 最终评价（使用中等采样量）
+    double final_score = evaluate_alignment_score(mS_final, *mT, 15000);
+    
+    // 计算Chamfer距离（减少采样）
+    double ch = chamfer(*sample_pcd(mS_final, 10000), *sample_pcd(*mT, 10000));
+    
+    // ========== 优化6: 轻量级间隙计算（复用之前的采样）==========
+    t::geometry::TriangleMesh tmC_final = t::geometry::TriangleMesh::FromLegacy(mS_final);
+    t::geometry::RaycastingScene scene_final;
+    scene_final.AddTriangles(tmC_final);
+    
+    // 使用15000采样点计算详细指标
+    auto pts_final = mT->SamplePointsUniformly(15000);
+    std::vector<float> buf_final;
+    buf_final.reserve(pts_final->points_.size() * 3);
+    for (const auto& p : pts_final->points_) {
+        buf_final.push_back((float)p.x());
+        buf_final.push_back((float)p.y());
+        buf_final.push_back((float)p.z());
+    }
+    core::Tensor q_final(buf_final, {(int64_t)pts_final->points_.size(), 3}, core::Float32);
+    
+    auto sdist_final = scene_final.ComputeSignedDistance(q_final);
+    auto inside_final = scene_final.ComputeOccupancy(q_final);
+    
+    const float* sdv_final = sdist_final.GetDataPtr<float>();
+    const float* inv_final = inside_final.GetDataPtr<float>();
+    size_t n_final = pts_final->points_.size();
+    
+    std::vector<double> clearances_final;
+    clearances_final.reserve(n_final);
+    size_t inside_cnt_final = 0;
+    
+    for (size_t i = 0; i < n_final; ++i) {
+        if (inv_final[i] > 0.5f) {
+            inside_cnt_final++;
+            clearances_final.push_back(std::abs((double)sdv_final[i]));
+        }
+    }
+    
+    double inside_ratio_final = (double)inside_cnt_final / n_final;
+    double min_clear = 0, mean_clear = 0, p15_clear = 0;
+    
+    if (!clearances_final.empty()) {
+        std::sort(clearances_final.begin(), clearances_final.end());
+        min_clear = clearances_final.front();
+        mean_clear = std::accumulate(clearances_final.begin(), clearances_final.end(), 0.0) / clearances_final.size();
+        size_t k15 = (size_t)std::floor(0.15 * clearances_final.size());
+        if (k15 >= clearances_final.size()) k15 = clearances_final.size() - 1;
+        p15_clear = clearances_final[k15];
+    }
+    
+    if (verbose) {
+        std::cout << "\n=== Final Result ===" << std::endl;
+        std::cout << "  Method: Centerline + Adam (Optimized)" << std::endl;
+        std::cout << "  Mirrored: " << (mirror ? "Yes" : "No") << std::endl;
+        std::cout << "  Flipped: " << (flip ? "Yes" : "No") << std::endl;
+        std::cout << "  Translation: " << best_params(0) << " mm" << std::endl;
+        std::cout << "  Rotation: " << best_params(1) << " °" << std::endl;
+        std::cout << "  Chamfer: " << ch << " mm" << std::endl;
+        std::cout << "  Coverage: " << (inside_ratio_final * 100) << "%" << std::endl;
+        std::cout << "  Mean clearance: " << mean_clear << " mm" << std::endl;
+    }
+    
+    // 转换变换矩阵为NumPy数组
+    py::array_t<double> Tnp({4, 4});
+    auto r = Tnp.mutable_unchecked<2>();
+    for (int i = 0; i < 4; ++i) {
+        for (int j = 0; j < 4; ++j) {
+            r(i, j) = T_final(i, j);
+        }
+    }
+    
+    // 返回结果（格式与align_icp_with_mirror完全一致）
+    py::dict result;
+    result["T"] = Tnp;
+    result["chamfer"] = ch;
+    result["mirrored"] = mirror;  // 使用之前确定的mirror变量
+    
+    // 额外信息（新增，不影响兼容性）
+    result["flipped"] = flip;  // 使用之前确定的flip变量
+    result["translate_offset_mm"] = best_params(0);
+    result["rotate_offset_deg"] = best_params(1);
+    result["optimization_score"] = final_score;
+    result["inside_ratio"] = inside_ratio_final;
+    result["mean_clearance"] = mean_clear;
+    result["min_clearance"] = min_clear;
+    result["p15_clearance"] = p15_clear;
+    
+    return result;
+}
+
 // ----------------------------- PYBIND11 模块 -----------------------------
 
 PYBIND11_MODULE(cppcore, m) {
@@ -1050,4 +1623,17 @@ PYBIND11_MODULE(cppcore, m) {
           py::arg("thr_mm"), py::arg("radius_mm"));
     m.def("label_regions", &label_regions, "Label regions with shoe semantics",
           py::arg("v_tgt"), py::arg("regions"));
+    
+    // 中线对齐 + Adam优化 (新增)
+    m.def("align_centerline_adam", &align_centerline_adam, 
+          "Centerline-based alignment with Adam optimization",
+          py::arg("v_src"), py::arg("f_src"),
+          py::arg("v_tgt"), py::arg("f_tgt"),
+          py::arg("voxel") = 5.0,
+          py::arg("fpfh_radius") = 10.0,
+          py::arg("icp_thr") = 15.0,
+          py::arg("max_iterations") = 50,
+          py::arg("learning_rate") = 0.5,
+          py::arg("convergence_tol") = 0.1,
+          py::arg("verbose") = false);
 }

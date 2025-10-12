@@ -38,7 +38,8 @@ if [ "$1" = "celery" ]; then
     exec celery -A config worker -l info \
         --queues=default \
         --concurrency=${CELERY_CONCURRENCY:-4} \
-        --max-tasks-per-child=100 \
+        --max-tasks-per-child=2 \
+        --pool=prefork \
         --hostname=worker_default@%h
 fi
 
@@ -48,7 +49,7 @@ if [ "$1" = "celery-matching" ]; then
     exec celery -A config worker -l info \
         --queues=matching \
         --concurrency=${CELERY_MATCHING_CONCURRENCY:-1} \
-        --max-tasks-per-child=10 \
+        --max-tasks-per-child=2 \
         --hostname=worker_matching@%h \
         --prefetch-multiplier=1
 fi
