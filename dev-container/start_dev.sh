@@ -52,8 +52,8 @@ if docker-compose ps | grep -q "Up"; then
     echo ""
     echo "=== Next Steps ==="
     echo "1. Connect via VSCode Remote SSH"
-    echo "2. Run: /workspace/project/dev-container/build_cpp.sh"
-    echo "3. Run: /workspace/project/dev-container/test_build.sh"
+    echo "2. Build C++ extension: cd /workspace/project/hybrid && pip3 install -v ."
+    echo "3. Test environment: /workspace/test_env.sh"
 else
     echo "Error: Container failed to start. Check logs with: docker-compose logs"
     exit 1

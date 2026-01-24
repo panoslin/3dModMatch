@@ -13,7 +13,6 @@ services:
     hostname: shoe-matcher
     ports:
       - "2222:2222"  # SSH port for VSCode remote
-      - "8888:8888"  # Jupyter notebook
       - "8050:8050"  # Dash/Plotly apps
     volumes:
       # Main project directory
@@ -63,26 +62,6 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  # Optional: Jupyter notebook service
-  jupyter:
-    image: shoe-matcher:latest
-    container_name: shoe-matcher-jupyter
-    command: jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password=''
-    ports:
-      - "8889:8888"
-    volumes:
-      - ../:/workspace/project
-      - jupyter-data:/home/dev/.jupyter
-    environment:
-      - LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH:-}
-      - PYTHONPATH=/workspace/project/hybrid/python:${PYTHONPATH:-}
-    networks:
-      - shoe-matcher-network
-    depends_on:
-      - shoe-matcher
-    profiles:
-      - jupyter
-
 volumes:
   build-cache:
     driver: local
@@ -93,8 +72,6 @@ volumes:
   models-data:
     driver: local
   candidates-data:
-    driver: local
-  jupyter-data:
     driver: local
 
 networks:
